@@ -1,0 +1,149 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ── better-auth required tables ───────────────────────────────────────────────
+
+model User {
+  id            String    @id
+  name          String
+  email         String    @unique
+  emailVerified Boolean
+  image         String?
+  createdAt     DateTime
+  updatedAt     DateTime
+
+  sessions      Session[]
+  accounts      Account[]
+  jobs          Job[]
+  socialAccounts SocialAccount[]
+  scheduledPosts ScheduledPost[]
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime
+  updatedAt DateTime
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime
+  updatedAt             DateTime
+}
+
+model Verification {
+  id         String    @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime?
+  updatedAt  DateTime?
+}
+
+// ── Postflow tables ───────────────────────────────────────────────────────────
+
+model Job {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status       String   @default("queued")   // queued | running | completed | failed
+  step         String   @default("")
+  progress     Int      @default(0)
+  error        String?
+
+  youtubeUrl   String?
+  wasabiKey    String?  // source video key in Wasabi
+
+  transcriptJson Json?  // full WhisperX output
+  postcut        Json?  // {output_key, wasabi_url, duration_original, duration_cut}
+  logs           Json?  // [{ts, step, progress, status, error?}]
+
+  clips        Clip[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Clip {
+  id            String   @id @default(cuid())
+  jobId         String
+  job           Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  wasabiKey     String
+  wasabiUrl     String
+  duration      Float
+  start         Float
+  end           Float
+  viralityScore Int      @default(0)
+  hookText      String   @default("")
+  layout        String   @default("single")  // single | dual
+  approved      Boolean  @default(false)
+
+  scheduledPosts ScheduledPost[]
+
+  createdAt     DateTime @default(now())
+}
+
+model SocialAccount {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  platform         String   // instagram | tiktok | youtube | x
+  platformUserId   String
+  platformUsername String
+  accessToken      String
+  refreshToken     String?
+  expiresAt        DateTime?
+
+  scheduledPosts   ScheduledPost[]
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([userId, platform, platformUserId])
+}
+
+model ScheduledPost {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  clipId          String
+  clip            Clip      @relation(fields: [clipId], references: [id], onDelete: Cascade)
+
+  socialAccountId String?
+  socialAccount   SocialAccount? @relation(fields: [socialAccountId], references: [id])
+
+  platform        String    // instagram | tiktok | youtube | x
+  caption         String    @default("")
+  scheduledAt     DateTime?
+  status          String    @default("draft")  // draft | scheduled | published | failed
+  publishedAt     DateTime?
+  platformPostId  String?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
