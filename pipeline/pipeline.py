@@ -264,11 +264,14 @@ def _extract_audio(video_path: str, audio_path: str):
 def _upload_to_wasabi(local_path: str, key: str):
     import os
     import boto3
+    from botocore.config import Config
+    from boto3.s3.transfer import TransferConfig
     s3 = boto3.client(
         "s3",
         endpoint_url=os.environ["WASABI_ENDPOINT"],
         aws_access_key_id=os.environ["WASABI_ACCESS_KEY"],
         aws_secret_access_key=os.environ["WASABI_SECRET_KEY"],
+        config=Config(retries={"max_attempts": 10, "mode": "adaptive"}),
     )
-    with open(local_path, "rb") as f:
-        s3.upload_fileobj(f, os.environ["WASABI_BUCKET"], key)
+    transfer_cfg = TransferConfig(max_concurrency=1, multipart_chunksize=16 * 1024 * 1024)
+    s3.upload_file(local_path, os.environ["WASABI_BUCKET"], key, Config=transfer_cfg)

@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { ClipCard } from "@/components/jobs/clip-card"
+import { LibraryClips } from "./library-clips"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { UploadIcon } from "lucide-react"
@@ -38,16 +38,7 @@ export default async function LibraryPage() {
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          {clips.map((clip: typeof clips[0]) => (
-            <ClipCard
-              key={clip.id}
-              clip={clip}
-              onApprove={() => {}}
-              onSchedule={() => {}}
-            />
-          ))}
-        </div>
+        <LibraryClips clips={clips} />
       )}
     </div>
   )

@@ -53,11 +53,13 @@ def remove_silence(
 
     import boto3
 
+    from botocore.config import Config
     s3 = boto3.client(
         "s3",
         endpoint_url=os.environ["WASABI_ENDPOINT"],
         aws_access_key_id=os.environ["WASABI_ACCESS_KEY"],
         aws_secret_access_key=os.environ["WASABI_SECRET_KEY"],
+        config=Config(retries={"max_attempts": 10, "mode": "adaptive"}),
     )
     bucket = os.environ["WASABI_BUCKET"]
 
@@ -141,8 +143,9 @@ def remove_silence(
         cut_duration = float(probe2["format"]["duration"])
 
         # ── 6. Upload to Wasabi ───────────────────────────────────────────────
-        with open(output_path, "rb") as f:
-            s3.upload_fileobj(f, bucket, output_key)
+        from boto3.s3.transfer import TransferConfig
+        transfer_cfg = TransferConfig(max_concurrency=1, multipart_chunksize=16 * 1024 * 1024)
+        s3.upload_file(output_path, bucket, output_key, Config=transfer_cfg)
 
     return {
         "output_key": output_key,

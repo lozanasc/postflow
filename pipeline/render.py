@@ -108,11 +108,7 @@ def render_clip(
 
         # ── 7. Upload to Wasabi ───────────────────────────────────────────────
         output_key = f"jobs/{job_id}/clips/clip_{clip_index:03d}.mp4"
-        with open(subtitled_path, "rb") as f:
-            s3.upload_fileobj(
-                f, bucket, output_key,
-                ExtraArgs={"ContentType": "video/mp4"},
-            )
+        s3.upload_file(subtitled_path, bucket, output_key, ExtraArgs={"ContentType": "video/mp4"})
 
         # Generate presigned URL valid for 7 days
         url = s3.generate_presigned_url(
