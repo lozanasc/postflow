@@ -189,7 +189,7 @@ export function JobsTable({ jobs: initialJobs }: { jobs: Job[] }) {
           <div className="flex-1 overflow-y-auto mt-4">
             {logsJob?.logs && logsJob.logs.length > 0 ? (
               <div className="flex flex-col gap-2">
-                {logsJob.logs.map((entry, i) => (
+                {(logsJob.logs as LogEntry[]).map((entry, i) => (
                   <div
                     key={i}
                     className={`rounded-md border px-3 py-2 text-xs ${
