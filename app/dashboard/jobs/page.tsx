@@ -74,7 +74,7 @@ export default async function JobsPage({
           )}
         </div>
       ) : (
-        <JobsTable jobs={jobs.map((j) => ({ ...j, createdAt: j.createdAt.toISOString() }))} />
+        <JobsTable jobs={jobs.map((j: typeof jobs[number]) => ({ ...j, createdAt: j.createdAt.toISOString() }))} />
       )}
     </div>
   )
