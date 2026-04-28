@@ -24,6 +24,7 @@ import {
   Share2Icon,
   VideoIcon,
   AtSignIcon,
+  LayoutTemplateIcon,
 } from "lucide-react"
 
 const data = {
@@ -63,6 +64,12 @@ const data = {
         { title: "Post-Cuts", url: "/dashboard/library/post-cuts" },
         { title: "Short-form Bits", url: "/dashboard/library/bits" },
       ],
+    },
+    {
+      title: "Templates",
+      url: "/dashboard/templates",
+      icon: <LayoutTemplateIcon />,
+      items: [],
     },
     {
       title: "Calendar",
