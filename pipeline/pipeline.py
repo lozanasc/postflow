@@ -46,6 +46,8 @@ def web():
         language: str | None = None
         db_job_id: str | None = None
         webhook_url: str | None = None
+        max_clips: int = 5
+        template_config: dict | None = None
 
     @api.post("/ingest")
     async def ingest(req: IngestRequest):
@@ -57,6 +59,8 @@ def web():
             language=req.language,
             db_job_id=req.db_job_id,
             webhook_url=req.webhook_url,
+            max_clips=max(1, min(20, req.max_clips)),
+            template_config=req.template_config,
         )
         return {"job_id": job_id, "status": "queued"}
 
@@ -101,6 +105,8 @@ def run_pipeline(
     language: str | None = None,
     db_job_id: str | None = None,
     webhook_url: str | None = None,
+    max_clips: int = 5,
+    template_config: dict | None = None,
 ) -> dict:
     import os
     import tempfile
@@ -167,9 +173,9 @@ def run_pipeline(
 
             # ── Step 7: Render clips in parallel ──────────────────────────────
             update("Rendering vertical clips", 80)
-            top_clips = sorted(clips, key=lambda c: c["virality_score"], reverse=True)[:10]
+            top_clips = sorted(clips, key=lambda c: c["virality_score"], reverse=True)[:max_clips]
             rendered_clips = list(render_clip.starmap([
-                (job_id, i, clip, source_key, transcript["word_segments"])
+                (job_id, i, clip, source_key, transcript["word_segments"], template_config)
                 for i, clip in enumerate(top_clips)
             ]))
 

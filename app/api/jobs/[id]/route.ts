@@ -20,7 +20,7 @@ export async function GET(
   return NextResponse.json(job)
 }
 
-// Called by the Modal pipeline webhook when a job completes
+// Called by the Modal pipeline webhook — must be idempotent
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -31,22 +31,28 @@ export async function POST(
   const job = await db.job.findUnique({ where: { id } })
   if (!job) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
+  const incomingStatus: string = body.status ?? "running"
+  const isTerminal = (s: string) => s === "completed" || s === "failed"
+
+  // Idempotency: if already in a terminal state and this is another terminal call, no-op
+  if (isTerminal(job.status) && isTerminal(incomingStatus)) {
+    return NextResponse.json({ ok: true })
+  }
+
   // Append to logs
   const prevLogs = Array.isArray(job.logs) ? (job.logs as object[]) : []
   const newLog: Record<string, unknown> = {
     ts: new Date().toISOString(),
     step: body.step ?? "",
     progress: body.progress ?? 0,
-    status: body.status ?? "running",
+    status: incomingStatus,
   }
   if (body.error) newLog.error = body.error
 
-  // Persist transcript and postcut
   await db.job.update({
     where: { id },
     data: {
-      status: body.status ?? "completed",
-      // Don't reset progress on failure — keep last known value
+      status: incomingStatus,
       ...(body.progress !== undefined && { progress: body.progress }),
       ...(body.step !== undefined && { step: body.step }),
       error: body.error ?? null,
@@ -56,9 +62,10 @@ export async function POST(
     },
   })
 
-  // Persist rendered clips
+  // Persist rendered clips — skipDuplicates guards against double-delivery
   if (body.clips?.length) {
     await db.clip.createMany({
+      skipDuplicates: true,
       data: body.clips.map((c: {
         output_key: string
         wasabi_url: string

@@ -122,6 +122,8 @@ model Clip {
   scheduledPosts ScheduledPost[]
 
   createdAt     DateTime @default(now())
+
+  @@unique([jobId, wasabiKey])
 }
 
 model SocialAccount {
