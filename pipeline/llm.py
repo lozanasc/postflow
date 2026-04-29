@@ -1,19 +1,30 @@
 """
-Semantic highlight extraction using Mistral-7B-Instruct via vLLM.
+Semantic highlight extraction using Llama-3.1-8B-Instruct via vLLM.
 
-Chunks the transcript into ~4-minute overlapping windows and dispatches them
-to the LLM in parallel. Returns clip candidates with timestamps, virality
-scores, and suggested hook text.
+Key design: the LLM never outputs timestamps — it outputs sentence indices.
+Words are first grouped into timestamped sentences, the LLM picks which
+sentence range forms each clip, then Python resolves those back to exact
+word-level timestamps. This eliminates hallucinated timestamps entirely.
 """
 import modal
 from modal import enter, method
 from pipeline.common import app, llm_volume, hf_secret
 
-MODEL_ID = "mistralai/Mistral-7B-Instruct-v0.3"
+MODEL_ID = "meta-llama/Meta-Llama-3.1-8B-Instruct"
 MODELS_DIR = "/models/llm"
-CHUNK_WORDS = 800       # ~4 minutes of speech at average talking pace
-CHUNK_OVERLAP = 80      # Overlap between chunks to avoid boundary clipping
-CLIPS_PER_CHUNK = 3     # Number of clip candidates to extract per chunk
+
+# Sentence grouping
+MAX_WORDS_PER_SENTENCE = 20       # Hard cap; pauses split earlier
+PAUSE_THRESHOLD = 0.7             # Seconds of silence → new sentence
+
+# Chunking (in sentences, not words)
+SENTENCES_PER_CHUNK = 80          # ~6-8 minutes of speech per chunk
+CHUNK_OVERLAP_SENTENCES = 12      # Overlap to avoid missing clips at boundaries
+CLIPS_PER_CHUNK = 3               # Max candidates extracted per chunk
+
+# Clip length filters
+MIN_CLIP_DURATION = 20            # seconds
+MAX_CLIP_DURATION = 120           # seconds
 
 llm_image = (
     modal.Image.debian_slim(python_version="3.12")
@@ -37,15 +48,14 @@ llm_image = (
 class HighlightExtractor:
     @enter()
     def load_model(self):
-        import os
+        import glob, os
         from huggingface_hub import snapshot_download
         from vllm import LLM, SamplingParams
 
-        # Download model weights to volume on first run (or if previous download was incomplete)
-        import glob
         model_path = f"{MODELS_DIR}/{MODEL_ID.split('/')[-1]}"
         has_weights = bool(
-            glob.glob(f"{model_path}/*.safetensors") or glob.glob(f"{model_path}/*.bin")
+            glob.glob(f"{model_path}/*.safetensors")
+            or glob.glob(f"{model_path}/*.bin")
         )
         if not has_weights:
             snapshot_download(
@@ -61,8 +71,9 @@ class HighlightExtractor:
             gpu_memory_utilization=0.9,
         )
         self.sampling_params = SamplingParams(
-            temperature=0.3,
-            max_tokens=2048,
+            temperature=0.1,
+            max_tokens=1024,
+            stop=["<|eot_id|>"],
         )
 
     @method()
@@ -71,13 +82,17 @@ class HighlightExtractor:
         Extract viral clip candidates from a word-level transcript.
 
         Args:
-            word_segments: List of {word, start, end, speaker} dicts from WhisperX.
+            word_segments: [{word, start, end, speaker}] from WhisperX.
 
         Returns:
             Sorted list of clip candidates:
-            [{start, end, virality_score, hook_text, transcript_excerpt}]
+            [{start, end, duration, virality_score, hook_text, reason}]
         """
-        chunks = _chunk_words(word_segments, CHUNK_WORDS, CHUNK_OVERLAP)
+        # Group words into sentences so the LLM works with text units,
+        # not raw floats. Each sentence carries its real timestamps.
+        sentences = _to_sentences(word_segments)
+
+        chunks = _chunk_sentences(sentences, SENTENCES_PER_CHUNK, CHUNK_OVERLAP_SENTENCES)
         prompts = [_build_prompt(chunk) for chunk in chunks]
 
         outputs = self.llm.generate(prompts, self.sampling_params)
@@ -88,65 +103,119 @@ class HighlightExtractor:
             parsed = _parse_llm_output(raw, chunk)
             clips.extend(parsed)
 
-        # Deduplicate overlapping clips and sort by virality score
         clips = _deduplicate(clips)
         clips.sort(key=lambda c: c["virality_score"], reverse=True)
         return clips
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Sentence grouping ──────────────────────────────────────────────────────────
 
-def _chunk_words(
-    words: list[dict], size: int, overlap: int
+def _to_sentences(words: list[dict]) -> list[dict]:
+    """
+    Group words into sentences by splitting on pauses or word-count cap.
+    Each sentence retains its start/end timestamps from the word segments.
+    """
+    sentences: list[dict] = []
+    current: list[dict] = []
+
+    for i, word in enumerate(words):
+        current.append(word)
+
+        at_cap = len(current) >= MAX_WORDS_PER_SENTENCE
+        long_pause = (
+            i + 1 < len(words)
+            and (words[i + 1].get("start", 0) - word.get("end", 0)) > PAUSE_THRESHOLD
+        )
+        last_word = (i == len(words) - 1)
+
+        if (at_cap or long_pause or last_word) and current:
+            sentences.append({
+                "start": current[0].get("start", 0),
+                "end":   current[-1].get("end", 0),
+                "text":  " ".join(w["word"].strip() for w in current),
+            })
+            current = []
+
+    return sentences
+
+
+def _chunk_sentences(
+    sentences: list[dict], size: int, overlap: int
 ) -> list[list[dict]]:
-    """Slice word list into overlapping chunks."""
-    chunks = []
+    chunks: list[list[dict]] = []
     i = 0
-    while i < len(words):
-        chunk = words[i : i + size]
-        chunks.append(chunk)
+    while i < len(sentences):
+        chunks.append(sentences[i : i + size])
         i += size - overlap
     return chunks
 
 
-def _build_prompt(chunk: list[dict]) -> str:
-    transcript_text = " ".join(w["word"] for w in chunk)
-    start_time = chunk[0].get("start", 0)
-    end_time = chunk[-1].get("end", 0)
+# ── Prompt ─────────────────────────────────────────────────────────────────────
 
-    return f"""<s>[INST] You are an expert social media content strategist. Analyze podcast transcript chunks and identify the most viral short-form video moments.
+def _fmt_time(seconds: float) -> str:
+    m = int(seconds // 60)
+    s = int(seconds % 60)
+    return f"{m}:{s:02d}"
 
-Analyze this transcript chunk (from {start_time:.1f}s to {end_time:.1f}s) and identify {CLIPS_PER_CHUNK} distinct moments suitable for short-form video (30-60 seconds each).
 
-Each moment must:
-- Be self-contained (understandable without external context)
-- Contain a compelling hook in the first 3 seconds
-- Have high emotional valence, humor, controversy, or educational value
+def _build_prompt(sentences: list[dict]) -> str:
+    seg_start = sentences[0]["start"]
+    seg_end   = sentences[-1]["end"]
 
-Transcript:
-{transcript_text}
+    lines = "\n".join(
+        f"[{i + 1}] ({_fmt_time(s['start'])}) {s['text']}"
+        for i, s in enumerate(sentences)
+    )
 
-Output a JSON array only. No explanation. Format:
+    system = (
+        "You are an expert short-form video editor. "
+        "Your job is to find the best moments in podcast/talk transcripts "
+        "that will perform well as TikTok, Instagram Reels, or YouTube Shorts clips."
+    )
+
+    user = f"""Transcript segment ({_fmt_time(seg_start)} – {_fmt_time(seg_end)}):
+
+{lines}
+
+Find up to {CLIPS_PER_CHUNK} clip moments that would work as standalone short-form videos.
+
+A great clip:
+- Opens with a strong hook (surprising fact, bold claim, emotional moment, punchline)
+- Is self-contained — a viewer with no context understands and is entertained
+- Has a clear arc: setup → payoff, or question → answer, or claim → evidence
+- Runs 30–90 seconds (roughly {MIN_CLIP_DURATION//20}–{MAX_CLIP_DURATION//20} sentences at a normal pace)
+
+Use sentence numbers [1]–[{len(sentences)}] to define boundaries. Prefer clips that start mid-thought only if the hook is very strong.
+
+Respond with a JSON array only — no explanation, no markdown fences.
 [
   {{
-    "start": <float seconds>,
-    "end": <float seconds>,
+    "from_sentence": <int>,
+    "to_sentence": <int>,
     "virality_score": <int 1-10>,
-    "hook_text": "<5 word attention-grabbing text overlay>",
-    "reason": "<one sentence why this is viral>"
+    "hook_text": "<3-6 word punchy overlay text>",
+    "reason": "<one sentence: why this moment is viral>"
   }}
-] [/INST]"""
+]"""
+
+    # Llama 3.1 prompt format
+    return (
+        "<|begin_of_text|>"
+        "<|start_header_id|>system<|end_header_id|>\n\n"
+        f"{system}<|eot_id|>"
+        "<|start_header_id|>user<|end_header_id|>\n\n"
+        f"{user}<|eot_id|>"
+        "<|start_header_id|>assistant<|end_header_id|>\n\n"
+    )
 
 
-def _parse_llm_output(raw: str, chunk: list[dict]) -> list[dict]:
-    import json
-    import re
+# ── Output parsing ─────────────────────────────────────────────────────────────
 
-    chunk_start = chunk[0].get("start", 0)
-    chunk_end = chunk[-1].get("end", 0)
+def _parse_llm_output(raw: str, sentences: list[dict]) -> list[dict]:
+    import json, re
 
-    # Extract JSON array from output
-    match = re.search(r"\[.*\]", raw, re.DOTALL)
+    # Extract first JSON array from the output
+    match = re.search(r"\[.*?\]", raw, re.DOTALL)
     if not match:
         return []
 
@@ -155,40 +224,51 @@ def _parse_llm_output(raw: str, chunk: list[dict]) -> list[dict]:
     except json.JSONDecodeError:
         return []
 
-    clips = []
+    clips: list[dict] = []
     for item in items:
         if not isinstance(item, dict):
             continue
-        start = float(item.get("start", chunk_start))
-        end = float(item.get("end", chunk_end))
-        duration = end - start
-        # Filter out clips that are too short or too long
-        if duration < 8 or duration > 90:
+
+        # Convert 1-indexed sentence numbers → 0-indexed, clamped to valid range
+        from_idx = max(0, int(item.get("from_sentence", 1)) - 1)
+        to_idx   = min(len(sentences) - 1, int(item.get("to_sentence", len(sentences))) - 1)
+        if from_idx > to_idx:
             continue
+
+        start    = sentences[from_idx]["start"]
+        end      = sentences[to_idx]["end"]
+        duration = end - start
+
+        if duration < MIN_CLIP_DURATION or duration > MAX_CLIP_DURATION:
+            continue
+
         clips.append({
-            "start": start,
-            "end": end,
-            "duration": duration,
-            "virality_score": int(item.get("virality_score", 5)),
-            "hook_text": str(item.get("hook_text", ""))[:80],
-            "reason": str(item.get("reason", ""))[:200],
+            "start":         start,
+            "end":           end,
+            "duration":      duration,
+            "virality_score": max(1, min(10, int(item.get("virality_score", 5)))),
+            "hook_text":     str(item.get("hook_text", ""))[:80],
+            "reason":        str(item.get("reason", ""))[:200],
         })
+
     return clips
 
 
+# ── Deduplication ──────────────────────────────────────────────────────────────
+
 def _deduplicate(clips: list[dict], overlap_threshold: float = 0.5) -> list[dict]:
-    """Remove clips that overlap significantly with a higher-scored clip."""
+    """Drop clips that overlap significantly with a higher-scored one."""
     clips = sorted(clips, key=lambda c: c["virality_score"], reverse=True)
     kept: list[dict] = []
     for clip in clips:
-        overlaps = False
-        for kept_clip in kept:
-            intersection = min(clip["end"], kept_clip["end"]) - max(clip["start"], kept_clip["start"])
+        overlapping = False
+        for k in kept:
+            intersection = min(clip["end"], k["end"]) - max(clip["start"], k["start"])
             if intersection > 0:
-                shorter_duration = min(clip["duration"], kept_clip["duration"])
-                if intersection / shorter_duration > overlap_threshold:
-                    overlaps = True
+                shorter = min(clip["duration"], k["duration"])
+                if intersection / shorter > overlap_threshold:
+                    overlapping = True
                     break
-        if not overlaps:
+        if not overlapping:
             kept.append(clip)
     return kept
