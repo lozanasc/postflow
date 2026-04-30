@@ -157,19 +157,26 @@ def run_pipeline(
             transcriber = Transcriber()
             transcript = transcriber.run.remote(audio_bytes, language=language)
 
-            # ── Step 5: Remove silence (remote downloads from Wasabi) ─────────
-            update("Removing silence", 55)
+            # ── Step 5: Kick off silence removal async (independent of LLM) ──
             from pipeline.silence import remove_silence
             postcut_key = f"jobs/{job_id}/postcut.mp4"
-            silence_result = remove_silence.remote(
+            silence_handle = remove_silence.spawn(
                 input_wasabi_key=source_key,
                 output_key=postcut_key,
             )
 
-            # ── Step 6: Extract highlights ────────────────────────────────────
-            update("Extracting highlights", 70)
+            # ── Step 6: Summarize full transcript ─────────────────────────────
+            update("Summarising content", 60)
             extractor = HighlightExtractor()
-            clips = extractor.extract.remote(transcript["word_segments"])
+            summary = extractor.summarize.remote(transcript["word_segments"])
+
+            # ── Step 7: Extract highlights (uses summary as context) ──────────
+            update("Extracting highlights", 70)
+            clips = extractor.extract.remote(transcript["word_segments"], summary=summary)
+
+            # ── Wait for silence removal ──────────────────────────────────────
+            update("Finalising post-cut", 88)
+            silence_result = silence_handle.get()
 
             # ── Step 7: Render clips in parallel ──────────────────────────────
             update("Rendering vertical clips", 80)
@@ -180,13 +187,14 @@ def run_pipeline(
             ]))
 
             # ── Step 8: Presign post-cut URL ──────────────────────────────────
-            update("Finalising post-cut", 95)
+            update("Finalising", 95)
             postcut = render_postcut.remote(job_id, source_key, silence_result)
 
             # ── Step 9: Persist results ───────────────────────────────────────
             update("Saving results", 98)
             result = {
                 "job_id": job_id,
+                "summary": summary,
                 "transcript": transcript,
                 "postcut": postcut,
                 "clips": rendered_clips,
@@ -200,6 +208,7 @@ def run_pipeline(
                         "status": "completed",
                         "step": "Done",
                         "progress": 100,
+                        "summary": summary,
                         "transcript": transcript,
                         "postcut": postcut,
                         "clips": rendered_clips,

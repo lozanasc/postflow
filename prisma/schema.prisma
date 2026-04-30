@@ -82,9 +82,10 @@ model Job {
   templateId   String?  // "system-*" or a ClipTemplate CUID
   templateConfig Json?  // snapshot of the resolved TemplateConfig at job creation
 
-  transcriptJson Json?  // full WhisperX output
-  postcut        Json?  // {output_key, wasabi_url, duration_original, duration_cut}
-  logs           Json?  // [{ts, step, progress, status, error?}]
+  summary        String?  // LLM-generated summary of the full video
+  transcriptJson Json?    // full WhisperX output
+  postcut        Json?    // {output_key, wasabi_url, duration_original, duration_cut}
+  logs           Json?    // [{ts, step, progress, status, error?}]
 
   clips        Clip[]
   createdAt    DateTime @default(now())

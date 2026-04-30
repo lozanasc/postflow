@@ -77,12 +77,29 @@ class HighlightExtractor:
         )
 
     @method()
-    def extract(self, word_segments: list[dict]) -> list[dict]:
+    def summarize(self, word_segments: list[dict]) -> str:
+        """
+        Summarize the full video transcript.
+        Used as context for highlight extraction so clips stay on-topic.
+        """
+        full_text = " ".join(w["word"].strip() for w in word_segments)
+        # Truncate to ~6000 words (~40 min of speech) to fit context
+        words = full_text.split()
+        if len(words) > 6000:
+            full_text = " ".join(words[:6000]) + "..."
+
+        prompt = _build_summary_prompt(full_text)
+        output = self.llm.generate([prompt], self.sampling_params)
+        return output[0].outputs[0].text.strip()
+
+    @method()
+    def extract(self, word_segments: list[dict], summary: str = "") -> list[dict]:
         """
         Extract viral clip candidates from a word-level transcript.
 
         Args:
             word_segments: [{word, start, end, speaker}] from WhisperX.
+            summary:       Full-video summary — keeps clips on-topic.
 
         Returns:
             Sorted list of clip candidates:
@@ -93,7 +110,7 @@ class HighlightExtractor:
         sentences = _to_sentences(word_segments)
 
         chunks = _chunk_sentences(sentences, SENTENCES_PER_CHUNK, CHUNK_OVERLAP_SENTENCES)
-        prompts = [_build_prompt(chunk) for chunk in chunks]
+        prompts = [_build_prompt(chunk, summary) for chunk in chunks]
 
         outputs = self.llm.generate(prompts, self.sampling_params)
 
@@ -158,7 +175,26 @@ def _fmt_time(seconds: float) -> str:
     return f"{m}:{s:02d}"
 
 
-def _build_prompt(sentences: list[dict]) -> str:
+def _build_summary_prompt(full_text: str) -> str:
+    system = (
+        "You are an expert content analyst. "
+        "You summarize video and podcast transcripts accurately and concisely."
+    )
+    user = f"""Summarize this transcript in 3–5 sentences. Be specific about:
+1. What kind of content this is (interview, tutorial, story, debate, etc.)
+2. The main topic and who is speaking / what they're discussing
+3. The key arguments, insights, or information presented
+4. Any important context a video editor needs to make clips that represent the video honestly
+
+Transcript:
+{full_text}
+
+Write only the summary. No preamble, no labels."""
+
+    return _llama_prompt(system, user)
+
+
+def _build_prompt(sentences: list[dict], summary: str = "") -> str:
     seg_start = sentences[0]["start"]
     seg_end   = sentences[-1]["end"]
 
@@ -173,7 +209,17 @@ def _build_prompt(sentences: list[dict]) -> str:
         "that will perform well as TikTok, Instagram Reels, or YouTube Shorts clips."
     )
 
-    user = f"""Transcript segment ({_fmt_time(seg_start)} – {_fmt_time(seg_end)}):
+    context_block = ""
+    if summary:
+        context_block = f"""VIDEO CONTEXT (use this to judge clip relevance and accuracy):
+{summary}
+
+Only extract clips that are meaningfully connected to the above context.
+Do not extract moments that misrepresent the video's main point or take statements out of context.
+
+"""
+
+    user = f"""{context_block}Transcript segment ({_fmt_time(seg_start)} – {_fmt_time(seg_end)}):
 
 {lines}
 
@@ -183,9 +229,10 @@ A great clip:
 - Opens with a strong hook (surprising fact, bold claim, emotional moment, punchline)
 - Is self-contained — a viewer with no context understands and is entertained
 - Has a clear arc: setup → payoff, or question → answer, or claim → evidence
-- Runs 30–90 seconds (roughly {MIN_CLIP_DURATION//20}–{MAX_CLIP_DURATION//20} sentences at a normal pace)
+- Accurately represents the video's overall message — no out-of-context clips
+- Runs 30–90 seconds
 
-Use sentence numbers [1]–[{len(sentences)}] to define boundaries. Prefer clips that start mid-thought only if the hook is very strong.
+Use sentence numbers [1]–[{len(sentences)}] to define boundaries.
 
 Respond with a JSON array only — no explanation, no markdown fences.
 [
@@ -198,7 +245,11 @@ Respond with a JSON array only — no explanation, no markdown fences.
   }}
 ]"""
 
-    # Llama 3.1 prompt format
+    return _llama_prompt(system, user)
+
+
+def _llama_prompt(system: str, user: str) -> str:
+    """Format a prompt in Llama 3.1 chat template format."""
     return (
         "<|begin_of_text|>"
         "<|start_header_id|>system<|end_header_id|>\n\n"

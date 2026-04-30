@@ -56,6 +56,7 @@ export async function POST(
       ...(body.progress !== undefined && { progress: body.progress }),
       ...(body.step !== undefined && { step: body.step }),
       error: body.error ?? null,
+      summary: body.summary ?? undefined,
       transcriptJson: body.transcript ?? undefined,
       postcut: body.postcut ?? undefined,
       logs: [...prevLogs, newLog],
