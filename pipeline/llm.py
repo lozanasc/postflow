@@ -1,5 +1,5 @@
 """
-Semantic highlight extraction using Llama-3.1-8B-Instruct via vLLM.
+Semantic highlight extraction using Qwen2.5-7B-Instruct via vLLM.
 
 Key design: the LLM never outputs timestamps — it outputs sentence indices.
 Words are first grouped into timestamped sentences, the LLM picks which
@@ -8,9 +8,9 @@ word-level timestamps. This eliminates hallucinated timestamps entirely.
 """
 import modal
 from modal import enter, method
-from pipeline.common import app, llm_volume, hf_secret
+from pipeline.common import app, llm_volume
 
-MODEL_ID = "meta-llama/Meta-Llama-3.1-8B-Instruct"
+MODEL_ID = "Qwen/Qwen2.5-7B-Instruct"
 MODELS_DIR = "/models/llm"
 
 # Sentence grouping
@@ -41,7 +41,6 @@ llm_image = (
     image=llm_image,
     gpu="H100",
     volumes={MODELS_DIR: llm_volume},
-    secrets=[hf_secret],
     timeout=3600,
     scaledown_window=300,
 )
@@ -61,7 +60,6 @@ class HighlightExtractor:
             snapshot_download(
                 repo_id=MODEL_ID,
                 local_dir=model_path,
-                token=os.environ["HF_TOKEN"],
             )
 
         self.llm = LLM(
@@ -73,7 +71,7 @@ class HighlightExtractor:
         self.sampling_params = SamplingParams(
             temperature=0.1,
             max_tokens=1024,
-            stop=["<|eot_id|>"],
+            stop=["<|im_end|>"],
         )
 
     @method()
@@ -249,14 +247,11 @@ Respond with a JSON array only — no explanation, no markdown fences.
 
 
 def _llama_prompt(system: str, user: str) -> str:
-    """Format a prompt in Llama 3.1 chat template format."""
+    """Format a prompt in Qwen2.5 ChatML format."""
     return (
-        "<|begin_of_text|>"
-        "<|start_header_id|>system<|end_header_id|>\n\n"
-        f"{system}<|eot_id|>"
-        "<|start_header_id|>user<|end_header_id|>\n\n"
-        f"{user}<|eot_id|>"
-        "<|start_header_id|>assistant<|end_header_id|>\n\n"
+        f"<|im_start|>system\n{system}<|im_end|>\n"
+        f"<|im_start|>user\n{user}<|im_end|>\n"
+        "<|im_start|>assistant\n"
     )
 
 
