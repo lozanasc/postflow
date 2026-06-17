@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import * as React from "react"
 import {
   Collapsible,
   CollapsibleContent,
@@ -55,10 +56,22 @@ export function NavMain({
             )
           }
 
+          // Use controlled state instead of defaultOpen to avoid the
+          // "changing the default open state of an uncontrolled Collapsible" warning
+          // when the active route changes.
+          const [open, setOpen] = React.useState(isActive)
+
+          React.useEffect(() => {
+            if (isActive) {
+              setOpen(true)
+            }
+          }, [isActive])
+
           return (
             <Collapsible
               key={item.title}
-              defaultOpen={isActive}
+              open={open}
+              onOpenChange={setOpen}
               className="group/collapsible"
               render={<SidebarMenuItem />}
             >

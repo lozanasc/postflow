@@ -4,6 +4,7 @@ import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { SYSTEM_TEMPLATES } from "@/lib/template-types"
 import { TemplateManager } from "@/components/templates/template-manager"
+import { PageHeader } from "@/components/page-header"
 
 export default async function TemplatesPage() {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -28,10 +29,10 @@ export default async function TemplatesPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 pt-0">
-      <div>
-        <h1 className="text-2xl font-semibold">Templates</h1>
-        <p className="text-muted-foreground">Define how your clips look — subtitles, layout, aspect ratio, and more.</p>
-      </div>
+      <PageHeader
+        title="Templates"
+        description="Define how your clips look — subtitles, layout, aspect ratio, and more."
+      />
       <TemplateManager systemTemplates={SYSTEM_TEMPLATES} initialUserTemplates={serialised} />
     </div>
   )

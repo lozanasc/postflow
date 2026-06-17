@@ -27,6 +27,12 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -64,6 +70,12 @@
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
+  --success: oklch(0.55 0.18 142);
+  --success-foreground: oklch(0.985 0 0);
+  --warning: oklch(0.65 0.17 75);
+  --warning-foreground: oklch(0.145 0 0);
+  --info: oklch(0.55 0.16 250);
+  --info-foreground: oklch(0.985 0 0);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
@@ -99,6 +111,12 @@
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
+  --success: oklch(0.72 0.17 145);
+  --success-foreground: oklch(0.145 0 0);
+  --warning: oklch(0.78 0.15 75);
+  --warning-foreground: oklch(0.145 0 0);
+  --info: oklch(0.68 0.16 250);
+  --info-foreground: oklch(0.145 0 0);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
@@ -125,4 +143,223 @@
     @apply bg-background text-foreground;
     font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   }
+
+  /* Subtle mobile improvements: better tap targets & manipulation for interactive elements (minimalist, non-breaking) */
+  button,
+  [role="button"],
+  a[href] {
+    touch-action: manipulation;
+  }
+}
+
+/* Sonner Toaster: minimalist styling to match design tokens (Linear-like restraint) */
+[data-sonner-toaster][data-theme="light"],
+[data-sonner-toaster][data-theme="dark"] {
+  --normal-bg: var(--popover);
+  --normal-text: var(--popover-foreground);
+  --normal-border: var(--border);
+  --success-bg: var(--popover);
+  --success-text: var(--success);
+  --success-border: var(--border);
+  --error-bg: var(--popover);
+  --error-text: var(--destructive);
+  --error-border: var(--border);
+  --warning-bg: var(--popover);
+  --warning-text: var(--warning);
+  --warning-border: var(--border);
+  --info-bg: var(--popover);
+  --info-text: var(--info);
+  --info-border: var(--border);
+}
+
+/* react-day-picker (v10) minimalist styling integrated with Postflow tokens.
+   Avoids importing the package's style.css to keep bundle clean and fully themed. */
+.rdp {
+  --rdp-cell-size: 32px;
+  --rdp-accent-color: var(--primary);
+  --rdp-background-color: var(--popover);
+  font-size: 13px;
+}
+.rdp-months {
+  display: flex;
+  flex-direction: column;
+}
+.rdp-month {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rdp-caption {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+.rdp-caption_label {
+  font-weight: 500;
+  font-size: 13px;
+}
+.rdp-nav {
+  position: absolute;
+  right: 0;
+  display: flex;
+  gap: 2px;
+}
+.rdp-nav_button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border);
+  background: transparent;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1;
+  color: inherit;
+}
+.rdp-nav_button:hover {
+  background: var(--muted);
+}
+.rdp-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.rdp-head_row,
+.rdp-row {
+  display: flex;
+}
+.rdp-head_cell {
+  flex: 1;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding-bottom: 4px;
+}
+.rdp-cell {
+  flex: 1;
+  text-align: center;
+  position: relative;
+}
+.rdp-day {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--rdp-cell-size);
+  height: var(--rdp-cell-size);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 400;
+  color: inherit;
+  user-select: none;
+}
+.rdp-day:hover {
+  background: var(--muted);
+}
+.rdp-day_selected {
+  background: var(--primary) !important;
+  color: var(--primary-foreground) !important;
+}
+.rdp-day_today {
+  border: 1px solid var(--primary);
+  font-weight: 500;
+}
+.rdp-day_outside,
+.rdp-day_disabled {
+  color: var(--muted-foreground);
+  opacity: 0.45;
+}
+.rdp-day_disabled {
+  text-decoration: line-through;
+  pointer-events: none;
+}
+
+/* React Day Picker (calendar) — themed to match Postflow (minimal, mobile-friendly, uses design tokens) */
+.rdp-root {
+  /* Map to theme tokens */
+  --rdp-accent-color: var(--primary);
+  --rdp-accent-background-color: var(--accent);
+  --rdp-today-color: var(--primary);
+  --rdp-day-height: 38px;
+  --rdp-day-width: 38px;
+  --rdp-day_button-height: 36px;
+  --rdp-day_button-width: 36px;
+  --rdp-nav_button-height: 2rem;
+  --rdp-nav_button-width: 2rem;
+  font-size: 0.875rem;
+  --rdp-outside-opacity: 0.45;
+}
+
+.rdp-root .rdp-day_button {
+  border-radius: 9999px;
+  font-weight: 500;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.rdp-root .rdp-day_button:hover:not(:disabled) {
+  background-color: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.rdp-root .rdp-day_button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.rdp-root .rdp-day_button[aria-selected="true"] {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  border-color: transparent;
+}
+
+.rdp-root .rdp-weekday {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+/* Scheduled day indicator (dot under number) via custom modifier class */
+.rdp-day_scheduled .rdp-day_button {
+  position: relative;
+  font-weight: 600;
+}
+
+.rdp-day_scheduled .rdp-day_button::after {
+  content: "";
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  background-color: var(--primary);
+  pointer-events: none;
+}
+
+/* Dark mode tweaks for contrast on dots/selected */
+.dark .rdp-day_scheduled .rdp-day_button::after {
+  background-color: var(--primary);
+}
+
+.rdp-root .rdp-caption_label {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.rdp-root .rdp-button_next,
+.rdp-root .rdp-button_previous {
+  border-radius: 6px;
+}
+
+.rdp-root .rdp-button_next:hover,
+.rdp-root .rdp-button_previous:hover {
+  background-color: var(--accent);
 }

@@ -134,11 +134,9 @@ def render_clip(
         # ── 6. Upload ─────────────────────────────────────────────────────────
         output_key = f"jobs/{job_id}/clips/clip_{clip_index:03d}.mp4"
         s3.upload_file(current_path, bucket, output_key, ExtraArgs={"ContentType": "video/mp4"})
-        url = s3.generate_presigned_url(
-            "get_object",
-            Params={"Bucket": bucket, "Key": output_key},
-            ExpiresIn=604800,
-        )
+
+        # Use stable public URL (bucket must have public-read policy for GetObject)
+        url = f"https://s3.wasabisys.com/{bucket}/{output_key}"
 
     return {
         "output_key": output_key,
@@ -177,11 +175,8 @@ def render_postcut(
     bucket = os.environ["WASABI_BUCKET"]
     output_key = silence_result["output_key"]
 
-    url = s3.generate_presigned_url(
-        "get_object",
-        Params={"Bucket": bucket, "Key": output_key},
-        ExpiresIn=604800,
-    )
+    # Use stable public URL (bucket must have public-read policy)
+    url = f"https://s3.wasabisys.com/{bucket}/{output_key}"
     return {**silence_result, "wasabi_url": url}
 
 

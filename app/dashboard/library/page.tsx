@@ -6,40 +6,40 @@ import { LibraryClips } from "./library-clips"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { UploadIcon } from "lucide-react"
+import { PageHeader } from "@/components/page-header"
+import { getWasabiPublicUrl } from "@/lib/wasabi"
 
 export default async function LibraryPage() {
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session) redirect("/login")
 
-  const clips = await db.clip.findMany({
-    where: { job: { userId: session.user.id }, approved: true },
+  // Phase 3: fetch ALL clips (no approved: true filter) so Library supports full curation/review/approve + unapprove from here
+  const rawClips = await db.clip.findMany({
+    where: { job: { userId: session.user.id } },
     orderBy: { createdAt: "desc" },
     include: { job: { select: { id: true } } },
   })
 
+  // Use stable public URL when we have the key (works after bucket is made publicly readable).
+  // Falls back to whatever (possibly expired presigned) was stored.
+  const clips = rawClips.map((c) => ({
+    ...c,
+    wasabiUrl: c.wasabiKey ? getWasabiPublicUrl(c.wasabiKey) : c.wasabiUrl,
+  }))
+
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 pt-0">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Library</h1>
-          <p className="text-muted-foreground">Your approved clips ready to schedule.</p>
-        </div>
+      <PageHeader
+        title="Library"
+        description="Review, curate, and schedule clips. Use filters, multi-select, and bulk actions."
+      >
         <Button nativeButton={false} render={<Link href="/dashboard/upload" />}>
           <UploadIcon className="mr-2 h-4 w-4" />
           New Upload
         </Button>
-      </div>
+      </PageHeader>
 
-      {clips.length === 0 ? (
-        <div className="flex flex-col items-center gap-4 py-24 text-center">
-          <p className="text-muted-foreground text-sm">No approved clips yet.</p>
-          <Button variant="outline" nativeButton={false} render={<Link href="/dashboard/upload" />}>
-            Upload your first video
-          </Button>
-        </div>
-      ) : (
-        <LibraryClips clips={clips} />
-      )}
+      <LibraryClips clips={clips} />
     </div>
   )
 }
