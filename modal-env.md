@@ -75,23 +75,29 @@ Create these two secrets in the **Modal dashboard → Secrets** before deploying
 
 ## 4. Deploying the Pipeline
 
+**Important:** After any changes to files under `pipeline/`, you **must** redeploy.
+
 ```bash
 # Confirm Modal is authenticated
 python -m modal profile list
 
-# Deploy
-python -m modal deploy modal/pipeline.py
+# Deploy (note the correct path)
+python -m modal deploy pipeline/pipeline.py
 ```
 
-After deploying, Modal will output a URL like:
+After a successful deploy, Modal will output a URL like:
 ```
-https://lozanascbusiness--postflow-web.modal.run
+https://your-workspace--postflow-web.modal.run
 ```
 
-Add this to `.env.local`:
+Copy **that exact URL** and put it in your `.env.local` (and restart your Next.js dev server):
+
+```env
+MODAL_PIPELINE_URL=https://your-workspace--postflow-web.modal.run
+NEXT_PUBLIC_MODAL_PIPELINE_URL=https://your-workspace--postflow-web.modal.run
 ```
-MODAL_PIPELINE_URL=https://lozanascbusiness--postflow-web.modal.run
-```
+
+If you see an old URL like `lozanascbusiness--...` anywhere, replace it with the one from your deploy.
 
 ---
 
@@ -117,4 +123,38 @@ These are created automatically on first deploy. First run will be slow (~10 min
 - [ ] `postflow-wasabi` secret created in Modal dashboard
 - [ ] `postflow-hf` secret created in Modal dashboard
 - [ ] `.env.local` filled in locally
-- [ ] `python -m modal deploy modal/pipeline.py` runs without error
+- [ ] `python -m modal deploy pipeline/pipeline.py` runs without error
+- [ ] After deploy, copied the new `--postflow-web.modal.run` URL into `.env.local` (both MODAL_PIPELINE_URL and NEXT_PUBLIC_...)
+- [ ] Restarted your Next.js dev server after changing .env.local
+- [ ] Tested an ingest (the "invalid function call" error usually means you need to redeploy + update the URL)
+
+---
+
+## 7. Social Integrations (OAuth)
+
+Real OAuth is now wired for Instagram (Meta), TikTok, and YouTube.
+
+Add these to `.env.local`:
+
+```env
+# Meta / Instagram
+META_APP_ID=your_meta_app_id
+META_APP_SECRET=your_meta_app_secret
+
+# TikTok
+TIKTOK_CLIENT_KEY=your_tiktok_client_key
+TIKTOK_CLIENT_SECRET=your_tiktok_client_secret
+
+# YouTube / Google
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+```
+
+**Important redirect URIs** (register in each platform's developer console):
+- `http://localhost:3000/api/integrations/meta/callback`
+- `http://localhost:3000/api/integrations/tiktok/callback`
+- `http://localhost:3000/api/integrations/youtube/callback`
+
+In production replace `localhost:3000` with your real `NEXT_PUBLIC_APP_URL`.
+
+After adding env, restart the dev server.

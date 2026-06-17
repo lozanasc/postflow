@@ -89,26 +89,16 @@ const data = {
       icon: <Settings2Icon />,
       items: [
         { title: "General", url: "/dashboard/settings" },
-        { title: "Connected Accounts", url: "/dashboard/settings/accounts" },
+        { title: "Integrations", url: "/dashboard/settings/integrations" },
         { title: "Billing", url: "/dashboard/settings/billing" },
       ],
     },
   ],
   projects: [
     {
-      name: "Instagram / TikTok",
-      url: "/dashboard/settings/accounts",
+      name: "Integrations",
+      url: "/dashboard/settings/integrations",
       icon: <Share2Icon />,
-    },
-    {
-      name: "YouTube",
-      url: "/dashboard/settings/accounts",
-      icon: <VideoIcon />,
-    },
-    {
-      name: "X (Twitter)",
-      url: "/dashboard/settings/accounts",
-      icon: <AtSignIcon />,
     },
   ],
 }
