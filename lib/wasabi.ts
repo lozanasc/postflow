@@ -11,3 +11,14 @@ export const wasabi = new S3Client({
 })
 
 export const WASABI_BUCKET = process.env.WASABI_BUCKET!
+
+/**
+ * Stable public URL for objects (requires bucket policy allowing public GetObject).
+ * Uses path-style which works reliably with Wasabi.
+ */
+export function getWasabiPublicUrl(key: string): string {
+  const bucket = WASABI_BUCKET
+  // Clean leading slashes
+  const cleanKey = key.replace(/^\/+/, "")
+  return `https://s3.wasabisys.com/${bucket}/${cleanKey}`
+}
