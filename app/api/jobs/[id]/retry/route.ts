@@ -45,9 +45,34 @@ export async function POST(
     }),
   })
 
+  // After successful trigger we don't get the modal uuid back here in retry (unlike ingest),
+  // but the first webhook / live status will populate it. We still reset logs above.
+
   if (!res.ok) {
-    await db.job.update({ where: { id }, data: { status: "failed", error: "Failed to start pipeline" } })
-    return NextResponse.json({ error: "Failed to start pipeline" }, { status: 502 })
+    let details = "No response body"
+    try {
+      details = await res.text()
+    } catch {}
+    console.error("Modal pipeline /ingest (retry) failed:", res.status, details)
+
+    let userMessage = "Failed to start pipeline"
+    if (details.includes("invalid function call")) {
+      userMessage = "Failed to start pipeline (Modal deployment issue — run `python -m modal deploy pipeline/pipeline.py` and update the URL in .env.local)"
+    }
+
+    await db.job.update({ where: { id }, data: { status: "failed", error: userMessage } })
+    return NextResponse.json({ error: userMessage, details }, { status: 502 })
+  }
+
+  const { job_id: modalJobId } = await res.json().catch(() => ({} as any))
+  if (modalJobId) {
+    await db.job.update({
+      where: { id },
+      data: {
+        step: modalJobId,
+        logs: [{ ts: new Date().toISOString(), step: modalJobId, modalJobId }],
+      },
+    })
   }
 
   return NextResponse.json({ ok: true })

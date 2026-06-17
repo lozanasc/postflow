@@ -52,7 +52,8 @@ def web():
     @api.post("/ingest")
     async def ingest(req: IngestRequest):
         job_id = str(uuid.uuid4())
-        run_pipeline.spawn(
+        # Use .aio() because this handler is async (avoids Modal AsyncUsageWarning)
+        run_pipeline.spawn.aio(
             job_id=job_id,
             video_url=req.video_url,
             youtube_url=req.youtube_url,
@@ -86,6 +87,18 @@ def web():
         except WebSocketDisconnect:
             pass
 
+    @api.get("/status/{job_id}")
+    async def status(job_id: str):
+        job_dict = modal.Dict.from_name(f"job-{job_id}", create_if_missing=True)
+        return {
+            "job_id": job_id,
+            "status": job_dict.get("status", "queued"),
+            "step": job_dict.get("step", ""),
+            "progress": job_dict.get("progress", 0),
+            "error": job_dict.get("error"),
+            "result": job_dict.get("result"),
+        }
+
     return api
 
 
@@ -114,6 +127,15 @@ def run_pipeline(
     import urllib.request
 
     def update(step: str, progress: int, status: str = "running"):
+        # Always try to update the Modal Dict so the /progress WS works (independent of webhook)
+        try:
+            job_dict = modal.Dict.from_name(f"job-{job_id}", create_if_missing=True)
+            job_dict["status"] = status
+            job_dict["step"] = step
+            job_dict["progress"] = progress
+        except Exception:
+            pass
+
         if webhook_url:
             try:
                 payload = f'{{"status":"{status}","step":"{step}","progress":{progress}}}'
@@ -200,7 +222,16 @@ def run_pipeline(
                 "clips": rendered_clips,
             }
 
-            # Final webhook with all results
+            # Final webhook with all results + update dict for WS observers
+            try:
+                job_dict = modal.Dict.from_name(f"job-{job_id}", create_if_missing=True)
+                job_dict["status"] = "completed"
+                job_dict["step"] = "Done"
+                job_dict["progress"] = 100
+                job_dict["result"] = result
+            except Exception:
+                pass
+
             if webhook_url:
                 try:
                     import json as _json
@@ -226,6 +257,13 @@ def run_pipeline(
             return result
 
     except Exception as e:
+        try:
+            job_dict = modal.Dict.from_name(f"job-{job_id}", create_if_missing=True)
+            job_dict["status"] = "failed"
+            job_dict["error"] = str(e)
+        except Exception:
+            pass
+
         if webhook_url:
             try:
                 import json as _json
