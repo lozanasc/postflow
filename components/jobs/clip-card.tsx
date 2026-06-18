@@ -290,29 +290,31 @@ export function ClipCard({ clip, onApprove, onSchedule, playingClipId, onPlay, s
             </div>
           </CardContent>
 
-          <CardFooter className="mt-3 flex gap-2 pt-0">
-            <Button
-              variant={clip.approved ? "default" : "outline"}
-              size="sm"
-              className="flex-1"
-              onClick={() => onApprove(clip.id)}
-            >
-              {clip.approved ? (
-                <><CheckIcon className="mr-1.5 h-3.5 w-3.5" />Approved</>
-              ) : (
-                "Approve"
-              )}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1"
-              onClick={() => onSchedule(clip.id)}
-              disabled={!clip.approved}
-            >
-              <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
-              Schedule
-            </Button>
+          <CardFooter className="pt-0">
+            <div className="mt-2 flex w-full gap-2">
+              <Button
+                variant={clip.approved ? "default" : "outline"}
+                size="sm"
+                className="flex-1"
+                onClick={() => onApprove(clip.id)}
+              >
+                {clip.approved ? (
+                  <><CheckIcon className="mr-1.5 h-3.5 w-3.5" />Approved</>
+                ) : (
+                  "Approve"
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                onClick={() => onSchedule(clip.id)}
+                disabled={!clip.approved}
+              >
+                <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
+                Schedule
+              </Button>
+            </div>
           </CardFooter>
         </>
       )}
