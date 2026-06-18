@@ -250,7 +250,7 @@ export function ClipCard({ clip, onApprove, onSchedule, playingClipId, onPlay, s
             </div>
           </div>
 
-          <div className="mt-2 flex gap-1.5">
+          <div className="mt-3 flex gap-1.5">
             <Button
               variant={clip.approved ? "default" : "outline"}
               size="sm"
@@ -290,7 +290,7 @@ export function ClipCard({ clip, onApprove, onSchedule, playingClipId, onPlay, s
             </div>
           </CardContent>
 
-          <CardFooter className="mt-2 flex gap-2 pt-0">
+          <CardFooter className="mt-3 flex gap-2 pt-0">
             <Button
               variant={clip.approved ? "default" : "outline"}
               size="sm"
