@@ -28,6 +28,7 @@ import {
 interface Clip {
   id: string
   wasabiUrl: string
+  wasabiKey?: string | null
   duration: number
   viralityScore: number
   hookText: string

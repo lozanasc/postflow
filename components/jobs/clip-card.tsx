@@ -11,6 +11,7 @@ import { CalendarIcon, CheckIcon, PlayIcon } from "lucide-react"
 interface Clip {
   id: string
   wasabiUrl: string
+  wasabiKey?: string | null
   duration: number
   viralityScore: number
   hookText: string
@@ -37,6 +38,8 @@ interface ClipCardProps {
 
 export function ClipCard({ clip, onApprove, onSchedule, playingClipId, onPlay, selectable, selected, onToggleSelect, variant = "grid" }: ClipCardProps) {
   const [localPlaying, setLocalPlaying] = useState(false)
+  const [videoError, setVideoError] = useState(false)
+  const [activeSrc, setActiveSrc] = useState<string | null>(null)
 
   // Controlled or local playing state
   const playing = playingClipId !== undefined ? playingClipId === clip.id : localPlaying
@@ -46,6 +49,7 @@ export function ClipCard({ clip, onApprove, onSchedule, playingClipId, onPlay, s
     } else {
       setLocalPlaying(val)
     }
+    if (val) setVideoError(false)
   }
 
   function formatDuration(s: number) {
@@ -83,15 +87,41 @@ export function ClipCard({ clip, onApprove, onSchedule, playingClipId, onPlay, s
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [playing])
 
-  // Prevent multiple simultaneous auto-plays: pause any other <video> elements on the page when starting this one
-  function startPlaying() {
+  // Prevent multiple simultaneous auto-plays
+  async function startPlaying() {
     document.querySelectorAll("video").forEach((v) => {
       if (!v.paused) {
         v.pause()
       }
     })
+
+    // EVERY TIME the user clicks play, fetch a fresh presigned URL
+    await ensureFreshPresigned()
     setPlaying(true)
   }
+
+  async function ensureFreshPresigned() {
+    let playUrl = clip.wasabiUrl
+    if (clip.wasabiKey) {
+      try {
+        const res = await fetch(`/api/presign?key=${encodeURIComponent(clip.wasabiKey)}`)
+        if (res.ok) {
+          const data = await res.json()
+          if (data.url) playUrl = data.url
+        }
+      } catch (e) {
+        console.warn("Failed to fetch fresh presigned URL, falling back", e)
+      }
+    }
+    setActiveSrc(playUrl)
+  }
+
+  // If playing prop turns on (e.g. from parent lifting), still ensure fresh URL
+  useEffect(() => {
+    if (playing) {
+      ensureFreshPresigned()
+    }
+  }, [playing])
 
   const isList = variant === "list"
 
@@ -118,16 +148,34 @@ export function ClipCard({ clip, onApprove, onSchedule, playingClipId, onPlay, s
         )}
       >
         {playing ? (
-          <video
-            src={clip.wasabiUrl}
-            autoPlay
-            controls
-            className="h-full w-full object-contain focus:outline-none"
-            onEnded={() => setPlaying(false)}
-            onPause={() => {
-              // keep state in sync if user uses native pause
-            }}
-          />
+          videoError ? (
+            <div className="flex h-full w-full flex-col items-center justify-center bg-black/80 text-center p-2 text-xs text-white/80">
+              <p>Failed to load video (403 or expired URL).</p>
+              <a
+                href={activeSrc || clip.wasabiUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 underline text-primary-foreground/80 hover:text-white"
+              >
+                Open in new tab / download
+              </a>
+            </div>
+          ) : (
+            <video
+              key={activeSrc || clip.wasabiUrl}
+              src={activeSrc || clip.wasabiUrl}
+              autoPlay
+              controls
+              playsInline
+              crossOrigin="anonymous"
+              className="h-full w-full object-contain focus:outline-none"
+              onEnded={() => setPlaying(false)}
+              onError={() => setVideoError(true)}
+              onPause={() => {
+                // keep state in sync if user uses native pause
+              }}
+            />
+          )
         ) : (
           <button
             className="group/play flex h-full w-full items-center justify-center focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
@@ -202,7 +250,7 @@ export function ClipCard({ clip, onApprove, onSchedule, playingClipId, onPlay, s
             </div>
           </div>
 
-          <div className="mt-1.5 flex gap-1.5">
+          <div className="mt-2 flex gap-1.5">
             <Button
               variant={clip.approved ? "default" : "outline"}
               size="sm"
@@ -242,7 +290,7 @@ export function ClipCard({ clip, onApprove, onSchedule, playingClipId, onPlay, s
             </div>
           </CardContent>
 
-          <CardFooter className="flex gap-2 pt-0">
+          <CardFooter className="mt-2 flex gap-2 pt-0">
             <Button
               variant={clip.approved ? "default" : "outline"}
               size="sm"

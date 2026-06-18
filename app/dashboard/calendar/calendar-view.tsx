@@ -44,11 +44,12 @@ import { cn } from "@/lib/utils"
 interface Clip {
   id: string
   wasabiUrl: string
+  wasabiKey?: string | null
   duration: number
   viralityScore: number
   hookText: string
   layout: string
-  job?: { id: string; youtubeUrl: string | null; wasabiKey: string | null } | null
+  job?: { id: string; youtubeUrl: string | null } | null
 }
 
 interface ScheduledPost {

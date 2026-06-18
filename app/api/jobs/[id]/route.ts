@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { headers } from "next/headers"
-import { getWasabiPublicUrl } from "@/lib/wasabi"
+import { getWasabiPresignedUrl } from "@/lib/wasabi"
 
 export async function GET(
   _req: NextRequest,
@@ -91,24 +91,26 @@ export async function GET(
     }
   }
 
-  // Ensure clips and postcut always have a usable (stable public) URL.
-  // If we have a wasabiKey, prefer (or fall back to) a direct public URL.
-  // This protects against expired presigned URLs from before the bucket was made public.
+  // Always serve fresh presigned GET URLs (Wasabi account does not allow public object access).
   const currentJob = job!
-  const enrichedClips = currentJob.clips.map((clip) => ({
-    ...clip,
-    wasabiUrl: clip.wasabiKey ? getWasabiPublicUrl(clip.wasabiKey) : clip.wasabiUrl,
-  }))
+  const enrichedClips = await Promise.all(
+    currentJob.clips.map(async (clip) => ({
+      ...clip,
+      wasabiUrl: clip.wasabiKey
+        ? await getWasabiPresignedUrl(clip.wasabiKey)
+        : clip.wasabiUrl,
+    }))
+  )
 
-  const enrichedPostcut = currentJob.postcut && typeof currentJob.postcut === "object"
-    ? {
-        ...(currentJob.postcut as Record<string, unknown>),
-        wasabi_url:
-          (currentJob.postcut as any)?.output_key
-            ? getWasabiPublicUrl((currentJob.postcut as any).output_key)
-            : (currentJob.postcut as any)?.wasabi_url,
-      }
-    : currentJob.postcut
+  let enrichedPostcut = currentJob.postcut
+  if (currentJob.postcut && typeof currentJob.postcut === "object") {
+    const pc = currentJob.postcut as any
+    const key = pc.output_key
+    enrichedPostcut = {
+      ...pc,
+      wasabi_url: key ? await getWasabiPresignedUrl(key) : pc.wasabi_url,
+    }
+  }
 
   return NextResponse.json({
     ...currentJob,

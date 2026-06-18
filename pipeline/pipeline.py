@@ -52,8 +52,8 @@ def web():
     @api.post("/ingest")
     async def ingest(req: IngestRequest):
         job_id = str(uuid.uuid4())
-        # Use .aio() because this handler is async (avoids Modal AsyncUsageWarning)
-        run_pipeline.spawn.aio(
+        # Must await the .aio() spawn from async context
+        await run_pipeline.spawn.aio(
             job_id=job_id,
             video_url=req.video_url,
             youtube_url=req.youtube_url,
@@ -71,14 +71,19 @@ def web():
         try:
             job_dict = modal.Dict.from_name(f"job-{job_id}", create_if_missing=True)
             while True:
-                status = job_dict.get("status", "queued")
+                # Use .aio() versions inside async handler to avoid blocking warnings
+                status = await job_dict.get.aio("status", "queued")
+                step = await job_dict.get.aio("step", "")
+                progress = await job_dict.get.aio("progress", 0)
+                error = await job_dict.get.aio("error")
+                result = await job_dict.get.aio("result")
                 payload = {
                     "job_id": job_id,
                     "status": status,
-                    "step": job_dict.get("step", ""),
-                    "progress": job_dict.get("progress", 0),
-                    "error": job_dict.get("error"),
-                    "result": job_dict.get("result"),
+                    "step": step,
+                    "progress": progress,
+                    "error": error,
+                    "result": result,
                 }
                 await websocket.send_text(json.dumps(payload))
                 if status in ("completed", "failed"):
@@ -90,13 +95,19 @@ def web():
     @api.get("/status/{job_id}")
     async def status(job_id: str):
         job_dict = modal.Dict.from_name(f"job-{job_id}", create_if_missing=True)
+        # Use .aio() versions inside async handler
+        status = await job_dict.get.aio("status", "queued")
+        step = await job_dict.get.aio("step", "")
+        progress = await job_dict.get.aio("progress", 0)
+        error = await job_dict.get.aio("error")
+        result = await job_dict.get.aio("result")
         return {
             "job_id": job_id,
-            "status": job_dict.get("status", "queued"),
-            "step": job_dict.get("step", ""),
-            "progress": job_dict.get("progress", 0),
-            "error": job_dict.get("error"),
-            "result": job_dict.get("result"),
+            "status": status,
+            "step": step,
+            "progress": progress,
+            "error": error,
+            "result": result,
         }
 
     return api
@@ -127,12 +138,12 @@ def run_pipeline(
     import urllib.request
 
     def update(step: str, progress: int, status: str = "running"):
-        # Always try to update the Modal Dict so the /progress WS works (independent of webhook)
+        # Update the Modal Dict (sync is fine here since run_pipeline is not async)
         try:
             job_dict = modal.Dict.from_name(f"job-{job_id}", create_if_missing=True)
-            job_dict["status"] = status
-            job_dict["step"] = step
-            job_dict["progress"] = progress
+            job_dict.put("status", status)
+            job_dict.put("step", step)
+            job_dict.put("progress", progress)
         except Exception:
             pass
 
@@ -225,10 +236,10 @@ def run_pipeline(
             # Final webhook with all results + update dict for WS observers
             try:
                 job_dict = modal.Dict.from_name(f"job-{job_id}", create_if_missing=True)
-                job_dict["status"] = "completed"
-                job_dict["step"] = "Done"
-                job_dict["progress"] = 100
-                job_dict["result"] = result
+                job_dict.put("status", "completed")
+                job_dict.put("step", "Done")
+                job_dict.put("progress", 100)
+                job_dict.put("result", result)
             except Exception:
                 pass
 
@@ -259,8 +270,8 @@ def run_pipeline(
     except Exception as e:
         try:
             job_dict = modal.Dict.from_name(f"job-{job_id}", create_if_missing=True)
-            job_dict["status"] = "failed"
-            job_dict["error"] = str(e)
+            job_dict.put("status", "failed")
+            job_dict.put("error", str(e))
         except Exception:
             pass
 

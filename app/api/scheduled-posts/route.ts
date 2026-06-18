@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { headers } from "next/headers"
+import { getWasabiPresignedUrl } from "@/lib/wasabi"
 
 export async function GET() {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -14,18 +15,32 @@ export async function GET() {
       clip: {
         select: {
           id: true,
+          wasabiKey: true,
           wasabiUrl: true,
           duration: true,
           viralityScore: true,
           hookText: true,
           layout: true,
-          job: { select: { id: true, youtubeUrl: true, wasabiKey: true } },
+          job: { select: { id: true, youtubeUrl: true } },
         },
       },
     },
   })
 
-  return NextResponse.json(scheduled)
+  const enriched = await Promise.all(
+    scheduled.map(async (s) => ({
+      ...s,
+      clip: s.clip
+        ? {
+            ...s.clip,
+            wasabiUrl: s.clip.wasabiKey
+              ? await getWasabiPresignedUrl(s.clip.wasabiKey)
+              : s.clip.wasabiUrl,
+          }
+        : s.clip,
+    }))
+  )
+  return NextResponse.json(enriched)
 }
 
 export async function POST(req: NextRequest) {
