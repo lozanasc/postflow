@@ -1,23 +1,38 @@
 "use client"
 
 import { useState, useMemo, useEffect } from "react"
-import { DayPicker } from "react-day-picker"
-import "react-day-picker/style.css"
-import { format, isSameDay, startOfDay, addDays, addWeeks } from "date-fns"
+
+import { 
+  format, 
+  isSameDay, 
+  startOfDay, 
+  addDays, 
+  addWeeks, 
+  startOfMonth, 
+  endOfMonth, 
+  startOfWeek, 
+  endOfWeek, 
+  eachDayOfInterval, 
+  isSameMonth, 
+  addMonths, 
+  subMonths 
+} from "date-fns"
 import { toast } from "sonner"
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
-  CalendarIcon,
-  ClockIcon,
-  Trash2Icon,
-  SaveIcon,
-  XIcon,
-  FilterIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  ListIcon,
-  SearchIcon,
-  PlayIcon,
-} from "lucide-react"
+  faCalendar,
+  faClock,
+  faTrash,
+  faSave,
+  faTimes,
+  faFilter,
+  faChevronLeft,
+  faChevronRight,
+  faList,
+  faSearch,
+  faPlay,
+  faPaperPlane,
+} from '@fortawesome/free-solid-svg-icons';
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -39,12 +54,15 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { EmptyState } from "@/components/empty-state"
 import { cn } from "@/lib/utils"
+import { ScheduleSheet, type SchedulableClip } from "@/components/schedule-sheet"
+import { ScheduleOnDaySheet } from "@/components/schedule-on-day-sheet"
 
 // Types matching serialized server data
 interface Clip {
   id: string
   wasabiUrl: string
   wasabiKey?: string | null
+  thumbnailUrl?: string | null
   duration: number
   viralityScore: number
   hookText: string
@@ -107,9 +125,10 @@ function getPlatformBadgeClass(platform: string) {
 
 interface CalendarViewProps {
   posts: ScheduledPost[]
+  availableClips?: SchedulableClip[]
 }
 
-export function CalendarView({ posts: initialPosts }: CalendarViewProps) {
+export function CalendarView({ posts: initialPosts, availableClips = [] }: CalendarViewProps) {
   const [posts, setPosts] = useState<ScheduledPost[]>(initialPosts)
   const [month, setMonth] = useState<Date>(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
@@ -138,16 +157,27 @@ export function CalendarView({ posts: initialPosts }: CalendarViewProps) {
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
-  // Days that have at least one scheduled post (for modifier dots) — always based on full data
-  const daysWithPosts = useMemo(() => {
+  // General schedule sheet (top button)
+  const [scheduleOpen, setScheduleOpen] = useState(false)
+  const [clipsToSchedule, setClipsToSchedule] = useState<SchedulableClip[]>([])
+
+  // Dedicated sheet for "Schedule on this day" / + buttons (always fresh + fixed date)
+  const [onDayOpen, setOnDayOpen] = useState(false)
+  const [onDayDate, setOnDayDate] = useState<Date | null>(null)
+
+  // Days that have at least one scheduled post (for modifier dots) + counts for richer calendar
+  const { daysWithPosts, dayCounts } = useMemo(() => {
     const set = new Set<string>()
+    const counts = new Map<string, number>()
     posts.forEach((p) => {
       if (p.scheduledAt) {
         const d = new Date(p.scheduledAt)
-        set.add(format(d, "yyyy-MM-dd"))
+        const key = format(d, "yyyy-MM-dd")
+        set.add(key)
+        counts.set(key, (counts.get(key) || 0) + 1)
       }
     })
-    return set
+    return { daysWithPosts: set, dayCounts: counts }
   }, [posts])
 
   // Filtered + sorted list for the right pane / below calendar
@@ -202,8 +232,58 @@ export function CalendarView({ posts: initialPosts }: CalendarViewProps) {
     return result
   }, [posts, selectedDate, platformFilter, statusFilter, search])
 
+  // Posts for the calendar grid: apply platform/status/search but show the full month (ignore selectedDate + upcoming filter)
+  const calendarPosts = useMemo(() => {
+    let result = [...posts]
+
+    // Platform filter
+    if (platformFilter !== "all") {
+      result = result.filter((p) => p.platform === platformFilter)
+    }
+
+    // Status filter
+    if (statusFilter !== "all") {
+      result = result.filter((p) => p.status === statusFilter)
+    }
+
+    // Search
+    if (search.trim()) {
+      const q = search.toLowerCase().trim()
+      result = result.filter((p) => {
+        const hook = (p.clip?.hookText || "").toLowerCase()
+        const cap = (p.caption || "").toLowerCase()
+        const plat = (p.platform || "").toLowerCase()
+        return hook.includes(q) || cap.includes(q) || plat.includes(q)
+      })
+    }
+
+    return result
+  }, [posts, platformFilter, statusFilter, search])
+
   // Has any scheduled (for empty states)
   const hasAnyScheduled = posts.some((p) => !!p.scheduledAt)
+
+  // Full calendar grid days for current month (including leading/trailing)
+  const calendarDays = useMemo(() => {
+    const monthStart = startOfMonth(month)
+    const monthEnd = endOfMonth(month)
+    const gridStart = startOfWeek(monthStart, { weekStartsOn: 0 })
+    const gridEnd = endOfWeek(monthEnd, { weekStartsOn: 0 })
+    return eachDayOfInterval({ start: gridStart, end: gridEnd })
+  }, [month])
+
+  // Posts grouped by day string for the grid (using calendarPosts so filters apply)
+  const postsByDay = useMemo(() => {
+    const map = new Map<string, ScheduledPost[]>()
+    calendarPosts.forEach((p) => {
+      if (p.scheduledAt) {
+        const key = format(new Date(p.scheduledAt), "yyyy-MM-dd")
+        if (!map.has(key)) map.set(key, [])
+        map.get(key)!.push(p)
+      }
+    })
+    return map
+  }, [calendarPosts])
 
   // Open editor sheet for a post (pre-populate form fields)
   function openEditor(post: ScheduledPost) {
@@ -262,6 +342,31 @@ export function CalendarView({ posts: initialPosts }: CalendarViewProps) {
 
   function removePost(id: string) {
     setPosts((prev) => prev.filter((p) => p.id !== id))
+  }
+
+  // After successful scheduling from the sheet in calendar context: add the returned posts locally
+  function handleNewScheduled(created: any[]) {
+    if (!created || created.length === 0) return
+    const newOnes: ScheduledPost[] = created.map((c: any) => ({
+      id: c.id,
+      clipId: c.clipId,
+      platform: c.platform,
+      caption: c.caption || "",
+      scheduledAt: c.scheduledAt ? new Date(c.scheduledAt).toISOString() : null,
+      status: c.status || "draft",
+      createdAt: c.createdAt ? new Date(c.createdAt).toISOString() : new Date().toISOString(),
+      updatedAt: c.updatedAt ? new Date(c.updatedAt).toISOString() : new Date().toISOString(),
+      clip: c.clip || { id: c.clipId, duration: 0, viralityScore: 0, hookText: "", layout: "single", wasabiUrl: "" },
+    }))
+    setPosts((prev) => {
+      // de-dup by id
+      const existingIds = new Set(prev.map((p) => p.id))
+      const merged = [...prev]
+      for (const n of newOnes) {
+        if (!existingIds.has(n.id)) merged.push(n)
+      }
+      return merged
+    })
   }
 
   // Quick reschedule helpers (optimistic + API)
@@ -385,12 +490,29 @@ export function CalendarView({ posts: initialPosts }: CalendarViewProps) {
     setSearch("")
   }
 
+  // Open the *dedicated* on-day schedule sheet (fixed date, always fresh)
+  function scheduleOnDate(date: Date) {
+    setSelectedDate(date)
+    setOnDayDate(date)
+    setOnDayOpen(false)
+    requestAnimationFrame(() => {
+      setTimeout(() => setOnDayOpen(true), 10)
+    })
+  }
+
   // Small playable video preview (much better than static)
   function VideoPreview({ clip, className }: { clip: Clip; className?: string }) {
     const url = clip.wasabiUrl
+    const thumb = clip.thumbnailUrl
     return (
       <div className={cn("relative overflow-hidden rounded-md bg-black flex-shrink-0 border border-white/10 group/video", className)}>
-        {url ? (
+        {thumb ? (
+          <img
+            src={thumb}
+            alt={clip.hookText || "clip thumbnail"}
+            className="h-full w-full object-cover"
+          />
+        ) : url ? (
           <video
             src={url}
             className="h-full w-full object-cover"
@@ -412,7 +534,7 @@ export function CalendarView({ posts: initialPosts }: CalendarViewProps) {
           {formatDuration(clip.duration)}
         </div>
         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/video:opacity-70 transition">
-          <PlayIcon className="h-4 w-4 text-white drop-shadow" />
+          <FontAwesomeIcon icon={faPlay} className="h-4 w-4 text-white drop-shadow" />
         </div>
       </div>
     )
@@ -466,7 +588,7 @@ export function CalendarView({ posts: initialPosts }: CalendarViewProps) {
               {PLATFORM_LABEL[post.platform] ?? post.platform}
             </span>
             <span className="inline-flex items-center gap-1">
-              <ClockIcon className="h-3 w-3" />
+              <FontAwesomeIcon icon={faClock} className="h-3 w-3" />
               {formatScheduled(post.scheduledAt)}
             </span>
             <span className="text-[10px] opacity-60">· {formatDuration(post.clip.duration)}</span>
@@ -516,214 +638,294 @@ export function CalendarView({ posts: initialPosts }: CalendarViewProps) {
     )
   }
 
+  // Helper to get a nice tiny dot color per platform
+  function getPlatformDotClass(platform: string) {
+    switch (platform) {
+      case "instagram": return "bg-pink-500"
+      case "tiktok": return "bg-white border border-black"
+      case "youtube": return "bg-red-500"
+      case "x": return "bg-black dark:bg-white"
+      default: return "bg-muted-foreground"
+    }
+  }
+
   return (
-    <div className="flex flex-col gap-6">
-      {/* Responsive layout: stack on mobile, side-by-side on lg+ */}
-      <div className="flex flex-col gap-6 lg:flex-row">
-        {/* Calendar (shown in month mode) */}
-        {viewMode === "month" && (
-          <div className="lg:w-80 xl:w-[340px] shrink-0">
-            <Card className="overflow-hidden">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2 px-1">
-                  <div className="flex items-center gap-2 text-sm font-semibold">
-                    <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-                    Month view
-                  </div>
-                  <div className="text-[10px] text-muted-foreground">
-                    {format(month, "MMMM yyyy")}
-                  </div>
-                </div>
-
-                <DayPicker
-                  month={month}
-                  onMonthChange={setMonth}
-                  onDayClick={handleDayClick}
-                  modifiers={{
-                    scheduled: (date) => daysWithPosts.has(format(date, "yyyy-MM-dd")),
-                  }}
-                  modifiersClassNames={{
-                    scheduled: "rdp-day_scheduled",
-                  }}
-                  classNames={{
-                    root: "rdp-root",
-                    months: "flex flex-col sm:flex-row gap-4",
-                    month: "space-y-3",
-                    caption_label: "rdp-caption_label",
-                    nav: "flex items-center gap-1 absolute right-0",
-                    button_previous: "rdp-button_previous inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent text-muted-foreground",
-                    button_next: "rdp-button_next inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent text-muted-foreground",
-                    month_grid: "w-full border-collapse table-fixed",
-                    weekdays: "grid grid-cols-7 text-center mb-1",
-                    weekday: "rdp-weekday text-center",
-                    week: "grid grid-cols-7",
-                    day: "rdp-day text-center p-0.5",
-                    day_button:
-                      "rdp-day_button mx-auto flex h-9 w-9 items-center justify-center rounded-full text-sm hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40 aria-selected:bg-primary aria-selected:text-primary-foreground",
-                    selected: "bg-primary text-primary-foreground",
-                    today: "font-semibold text-primary",
-                  }}
-                  components={{
-                    Chevron: (props) => {
-                      if (props.orientation === "left") return <ChevronLeftIcon className="h-4 w-4" />
-                      return <ChevronRightIcon className="h-4 w-4" />
-                    },
-                  }}
-                  showOutsideDays
-                  fixedWeeks
-                />
-
-                <div className="mt-2 flex items-center justify-between px-1 text-[10px] text-muted-foreground">
-                  <div className="flex items-center gap-1.5">
-                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary" />
-                    <span>Has scheduled</span>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setSelectedDate(null)
-                      setMonth(new Date())
-                    }}
-                    className="hover:text-foreground underline-offset-2 hover:underline"
-                  >
-                    Today
-                  </button>
-                </div>
-              </CardContent>
-            </Card>
-
-            {selectedDate && (
-              <div className="mt-2 text-xs px-1 flex items-center gap-2 text-muted-foreground">
-                Filtering list to <span className="font-medium text-foreground">{format(selectedDate, "MMM d")}</span>
-                <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setSelectedDate(null)}>
-                  Clear day
-                </Button>
-              </div>
-            )}
+    <div className="flex flex-col gap-4">
+      {/* Full-screen Calendar Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5">
+          <Button variant="ghost" size="icon" onClick={() => setMonth(subMonths(month, 1))} className="h-8 w-8">
+            <FontAwesomeIcon icon={faChevronLeft} className="h-4 w-4" />
+          </Button>
+          <div className="font-semibold text-xl min-w-[170px] text-center tabular-nums tracking-tight">
+            {format(month, "MMMM yyyy")}
           </div>
-        )}
+          <Button variant="ghost" size="icon" onClick={() => setMonth(addMonths(month, 1))} className="h-8 w-8">
+            <FontAwesomeIcon icon={faChevronRight} className="h-4 w-4" />
+          </Button>
+          <Button 
+            size="sm" 
+            variant="outline" 
+            className="ml-1 h-8"
+            onClick={() => {
+              setMonth(new Date())
+              setSelectedDate(null)
+            }}
+          >
+            Today
+          </Button>
+        </div>
 
-        {/* List + filters */}
-        <div className="flex-1 min-w-0 flex flex-col gap-3">
-          {/* Filters header + view switch + search */}
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-sm font-semibold">
-                <FilterIcon className="h-4 w-4 text-muted-foreground" />
-                {selectedDate
-                  ? `Posts on ${format(selectedDate, "MMM d, yyyy")}`
-                  : "Upcoming & drafts"}
-                <span className="font-normal text-muted-foreground">({filteredPosts.length})</span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {/* View toggle */}
-                <div className="inline-flex rounded-lg border p-0.5 text-xs">
-                  <button
-                    onClick={() => setViewMode("month")}
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md transition ${viewMode === "month" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-                  >
-                    <CalendarIcon className="h-3.5 w-3.5" /> Month
-                  </button>
-                  <button
-                    onClick={() => setViewMode("agenda")}
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md transition ${viewMode === "agenda" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-                  >
-                    <ListIcon className="h-3.5 w-3.5" /> Agenda
-                  </button>
-                </div>
-
-                {(selectedDate || platformFilter !== "all" || statusFilter !== "all" || search) && (
-                  <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={resetFilters}>
-                    <XIcon className="mr-1 h-3 w-3" /> Reset
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            {/* Search */}
-            <div className="relative">
-              <SearchIcon className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search captions, hooks, or platforms..."
-                className="w-full rounded-lg border bg-background pl-9 pr-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1"
-              />
-            </div>
-
-            {/* Status tabs (Phase 1 pattern) */}
-            <Tabs
-              value={statusFilter}
-              onValueChange={(v) => setStatusFilter(v as StatusFilter)}
+        <div className="flex items-center gap-2">
+          {/* View toggle */}
+          <div className="inline-flex rounded-lg border p-0.5 text-xs">
+            <button
+              onClick={() => setViewMode("month")}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md transition ${viewMode === "month" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
             >
-              <TabsList variant="default" className="w-full sm:w-auto">
-                {STATUSES.map((s) => (
-                  <TabsTrigger key={s} value={s} className="capitalize text-xs">
-                    {s}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
+              <FontAwesomeIcon icon={faCalendar} className="h-3.5 w-3.5" /> Calendar
+            </button>
+            <button
+              onClick={() => setViewMode("agenda")}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md transition ${viewMode === "agenda" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+            >
+              <FontAwesomeIcon icon={faList} className="h-3.5 w-3.5" /> List
+            </button>
+          </div>
 
-            {/* Platform filter chips (mobile friendly, wrap) */}
-            <div className="flex flex-wrap gap-1.5">
-              {(["all", ...PLATFORMS] as Platform[]).map((p) => {
-                const active = platformFilter === p
-                const label = p === "all" ? "All platforms" : PLATFORM_LABEL[p] ?? p
+          <Button 
+            size="sm" 
+            onClick={() => {
+              setClipsToSchedule([])
+              setScheduleOpen(false)
+              requestAnimationFrame(() => setTimeout(() => setScheduleOpen(true), 10))
+            }}
+          >
+            <FontAwesomeIcon icon={faCalendar} className="mr-1.5 h-4 w-4" />
+            Schedule clips
+          </Button>
+        </div>
+      </div>
+
+      {/* Filters (search + platform + status) — compact for calendar */}
+      <div className="flex flex-col gap-3">
+        {/* Search */}
+        <div className="relative max-w-md">
+          <FontAwesomeIcon icon={faSearch} className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search hooks, captions..."
+            className="w-full rounded-lg border bg-background pl-9 pr-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1"
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Status tabs */}
+          <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
+            <TabsList variant="default" className="h-8">
+              {STATUSES.map((s) => (
+                <TabsTrigger key={s} value={s} className="capitalize text-xs px-3">
+                  {s}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+
+          {/* Platform chips */}
+          <div className="flex flex-wrap gap-1.5">
+            {(["all", ...PLATFORMS] as Platform[]).map((p) => {
+              const active = platformFilter === p
+              const label = p === "all" ? "All" : PLATFORM_LABEL[p] ?? p
+              return (
+                <button
+                  key={p}
+                  onClick={() => togglePlatform(p)}
+                  className={cn(
+                    "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors",
+                    active
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-background hover:bg-muted/60 text-foreground border-border"
+                  )}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+
+          {(selectedDate || platformFilter !== "all" || statusFilter !== "all" || search) && (
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs ml-auto" onClick={resetFilters}>
+              <FontAwesomeIcon icon={faTimes} className="mr-1 h-3 w-3" /> Reset
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Main Calendar Content */}
+      {viewMode === "month" ? (
+        <div className="flex flex-col lg:flex-row gap-4 min-h-[560px]">
+          {/* THE FULL SCREEN CALENDAR GRID */}
+          <div className="flex-1 min-w-0 min-w-[280px]">
+            {/* Weekday headers */}
+            <div className="grid grid-cols-7 text-[10px] font-medium uppercase tracking-[0.5px] text-muted-foreground mb-1 px-1 select-none">
+              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((w) => (
+                <div key={w} className="text-center py-1">{w}</div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-7 gap-px bg-border rounded-2xl overflow-hidden border">
+              {calendarDays.map((day) => {
+                const key = format(day, "yyyy-MM-dd")
+                const dayEvents = postsByDay.get(key) || []
+                const isOutside = !isSameMonth(day, month)
+                const isToday = isSameDay(day, new Date())
+                const isSel = !!selectedDate && isSameDay(day, selectedDate)
+
                 return (
-                  <button
-                    key={p}
-                    onClick={() => togglePlatform(p)}
+                  <div
+                    key={key}
+                    onClick={() => handleDayClick(day)}
                     className={cn(
-                      "inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-                      active
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "bg-background hover:bg-muted/60 text-foreground border-border"
+                      "bg-background p-2 flex flex-col border-r border-b min-h-[118px] last:border-r-0 hover:bg-accent/40 transition-colors cursor-pointer group",
+                      isOutside && "bg-muted/30 text-muted-foreground",
+                      isSel && "ring-2 ring-primary ring-inset bg-accent/10 z-10",
+                      isToday && !isSel && "bg-accent/50"
                     )}
                   >
-                    {label}
-                  </button>
+                    <div className="flex items-start justify-between">
+                      <span
+                        className={cn(
+                          "text-[13px] font-semibold tabular-nums leading-none pt-0.5",
+                          isToday && "text-primary"
+                        )}
+                      >
+                        {format(day, "d")}
+                      </span>
+
+                      {dayEvents.length === 0 && !isOutside && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            scheduleOnDate(day)
+                          }}
+                          className="text-lg leading-none text-muted-foreground/50 hover:text-foreground px-0.5 -mt-0.5 rounded hover:bg-muted/70 opacity-0 group-hover:opacity-100 transition"
+                          title="Schedule here"
+                        >
+                          +
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Events inside the day cell */}
+                    <div className="mt-1.5 space-y-px text-[10px] leading-tight flex-1 overflow-hidden">
+                      {dayEvents.slice(0, 3).map((post) => (
+                        <div
+                          key={post.id}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openEditor(post)
+                          }}
+                          className="flex items-center gap-1.5 rounded px-1 py-0.5 bg-muted/70 hover:bg-primary hover:text-primary-foreground active:bg-primary transition truncate group/event"
+                        >
+                          {post.scheduledAt && (
+                            <span className="font-mono text-[9px] tabular-nums text-muted-foreground/80 w-7 shrink-0 group-hover/event:text-primary-foreground/80">
+                              {format(new Date(post.scheduledAt), "HH:mm")}
+                            </span>
+                          )}
+                          <div className={cn("h-1.5 w-1.5 rounded-full shrink-0", getPlatformDotClass(post.platform))} />
+                          <span className="truncate">
+                            {post.clip?.hookText ? post.clip.hookText : post.platform}
+                          </span>
+                        </div>
+                      ))}
+                      {dayEvents.length > 3 && (
+                        <div className="pl-1 text-[9px] text-muted-foreground">+{dayEvents.length - 3} more</div>
+                      )}
+                    </div>
+
+                    {dayEvents.length > 0 && (
+                      <div className="text-right text-[9px] text-muted-foreground mt-auto pr-0.5 tabular-nums">
+                        {dayEvents.length}
+                      </div>
+                    )}
+                  </div>
                 )
               })}
             </div>
+
+            <p className="mt-2 text-[10px] text-muted-foreground px-1">
+              Click day to focus it on the right. Click an item to edit. Hover days for + to schedule.
+            </p>
           </div>
 
-          {/* The list — supports Month (flat) + Agenda (grouped by day) */}
+          {/* Right detail panel — shows posts for the selected day */}
+          <div className="w-full lg:w-80 xl:w-96 flex-shrink-0">
+            <div className="rounded-2xl border bg-card h-full p-4 flex flex-col">
+              <div className="flex items-baseline justify-between mb-3">
+                <div>
+                  <div className="text-sm font-semibold">
+                    {selectedDate ? format(selectedDate, "EEEE, MMM d") : "Calendar"}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {selectedDate ? "Posts on this day" : "Select a day on the calendar"}
+                  </div>
+                </div>
+                {selectedDate && (
+                  <Button size="sm" variant="ghost" className="h-7" onClick={() => setSelectedDate(null)}>
+                    Clear
+                  </Button>
+                )}
+              </div>
+
+              {selectedDate ? (
+                (() => {
+                  const dayKey = format(selectedDate, "yyyy-MM-dd")
+                  const dayItems = calendarPosts.filter(
+                    (p) => p.scheduledAt && format(new Date(p.scheduledAt), "yyyy-MM-dd") === dayKey
+                  )
+                  return dayItems.length > 0 ? (
+                    <div className="space-y-2 overflow-auto flex-1 -mx-1 px-1">
+                      {dayItems.map((post) => (
+                        <ScheduledItem key={post.id} post={post} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex-1 flex items-center text-sm text-muted-foreground">
+                      No matching scheduled posts on this day.
+                    </div>
+                  )
+                })()
+              ) : (
+                <div className="flex-1 text-sm text-muted-foreground">
+                  Click any day in the calendar to see the scheduled clips for that day here.
+                </div>
+              )}
+
+              {selectedDate && (
+                <Button className="mt-4 w-full" variant="outline" size="sm" onClick={() => scheduleOnDate(selectedDate)}>
+                  + Schedule on this day
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        // AGENDA / LIST VIEW (kept as alternative)
+        <div className="space-y-4">
           {filteredPosts.length === 0 ? (
             <EmptyState
-              icon={CalendarIcon}
-              title={
-                selectedDate
-                  ? `No posts on ${format(selectedDate, "MMM d")}`
-                  : platformFilter !== "all" || statusFilter !== "all"
-                  ? "No posts match filters"
-                  : hasAnyScheduled
-                  ? "No upcoming posts"
-                  : "No scheduled posts yet"
-              }
-              description={
-                selectedDate
-                  ? "Try a different day or clear the day filter."
-                  : "Clips you schedule will appear here with video previews, platforms, and dates."
-              }
-              action={
-                !hasAnyScheduled ? (
-                  <Button variant="outline" size="sm" onClick={() => (window.location.href = "/dashboard/library")}>
-                    Go to Library
-                  </Button>
-                ) : undefined
-              }
+              icon={({ className }) => <FontAwesomeIcon icon={faCalendar} className={className} />}
+              title="No posts match"
+              description="Adjust filters or schedule new clips."
               variant="compact"
             />
-          ) : viewMode === "agenda" ? (
-            // Agenda view — grouped by day
+          ) : (
             <div className="space-y-6">
               {(() => {
                 const groups = new Map<string, ScheduledPost[]>()
                 filteredPosts.forEach((p) => {
-                  const key = p.scheduledAt
-                    ? format(new Date(p.scheduledAt), "yyyy-MM-dd")
-                    : "unscheduled"
+                  const key = p.scheduledAt ? format(new Date(p.scheduledAt), "yyyy-MM-dd") : "unscheduled"
                   if (!groups.has(key)) groups.set(key, [])
                   groups.get(key)!.push(p)
                 })
@@ -745,27 +947,16 @@ export function CalendarView({ posts: initialPosts }: CalendarViewProps) {
                 })
               })()}
             </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {filteredPosts.map((post) => (
-                <ScheduledItem key={post.id} post={post} />
-              ))}
-            </div>
           )}
-
-          {/* Helpful note */}
-          <p className="text-[11px] text-muted-foreground/70 px-1">
-            Click any day with a dot or any item to view &amp; edit (reschedule, change platform/status, caption). Changes sync to your queue.
-          </p>
         </div>
-      </div>
+      )}
 
       {/* Edit scheduled post — side drawer */}
       <Sheet open={!!editing} onOpenChange={(open) => { if (!open) closeEditor() }}>
         <SheetContent side="right" className="w-full sm:max-w-md flex flex-col p-0">
           <SheetHeader className="p-4 pb-3 border-b">
             <SheetTitle className="flex items-center gap-2">
-              <CalendarIcon className="h-4 w-4" />
+              <FontAwesomeIcon icon={faCalendar} className="h-4 w-4" />
               Edit scheduled post
             </SheetTitle>
             <SheetDescription>
@@ -902,6 +1093,26 @@ export function CalendarView({ posts: initialPosts }: CalendarViewProps) {
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      {/* General ScheduleSheet (used by top "Schedule clips" button) */}
+      <ScheduleSheet
+        open={scheduleOpen}
+        onOpenChange={setScheduleOpen}
+        clips={clipsToSchedule}
+        availableClips={availableClips}
+        defaultDate={selectedDate}
+        onScheduled={handleNewScheduled}
+      />
+
+      {/* Dedicated full-screen modal for "Schedule on this day" — searchable + paginated table */}
+      {onDayDate && (
+        <ScheduleOnDaySheet
+          open={onDayOpen}
+          onOpenChange={setOnDayOpen}
+          date={onDayDate}
+          onScheduled={handleNewScheduled}
+        />
+      )}
     </div>
   )
 }

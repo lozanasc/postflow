@@ -1,11 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
-import type { LucideIcon } from "lucide-react"
-
 interface StatCardProps {
   title: string
   value: React.ReactNode
-  icon?: LucideIcon
+  icon?: React.ComponentType<{ className?: string }>
   description?: string
   className?: string
 }

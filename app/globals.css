@@ -172,181 +172,76 @@
   --info-border: var(--border);
 }
 
-/* react-day-picker (v10) minimalist styling integrated with Postflow tokens.
-   Avoids importing the package's style.css to keep bundle clean and fully themed. */
-.rdp {
-  --rdp-cell-size: 32px;
-  --rdp-accent-color: var(--primary);
-  --rdp-background-color: var(--popover);
-  font-size: 13px;
-}
-.rdp-months {
-  display: flex;
-  flex-direction: column;
-}
-.rdp-month {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.rdp-caption {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding-top: 4px;
-  padding-bottom: 4px;
-}
-.rdp-caption_label {
-  font-weight: 500;
-  font-size: 13px;
-}
-.rdp-nav {
-  position: absolute;
-  right: 0;
-  display: flex;
-  gap: 2px;
-}
-.rdp-nav_button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border: 1px solid var(--border);
-  background: transparent;
-  border-radius: 6px;
-  font-size: 12px;
-  line-height: 1;
-  color: inherit;
-}
-.rdp-nav_button:hover {
-  background: var(--muted);
-}
-.rdp-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-.rdp-head_row,
-.rdp-row {
-  display: flex;
-}
-.rdp-head_cell {
-  flex: 1;
-  text-align: center;
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--muted-foreground);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding-bottom: 4px;
-}
-.rdp-cell {
-  flex: 1;
-  text-align: center;
-  position: relative;
-}
-.rdp-day {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--rdp-cell-size);
-  height: var(--rdp-cell-size);
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 400;
-  color: inherit;
-  user-select: none;
-}
-.rdp-day:hover {
-  background: var(--muted);
-}
-.rdp-day_selected {
-  background: var(--primary) !important;
-  color: var(--primary-foreground) !important;
-}
-.rdp-day_today {
-  border: 1px solid var(--primary);
-  font-weight: 500;
-}
-.rdp-day_outside,
-.rdp-day_disabled {
-  color: var(--muted-foreground);
-  opacity: 0.45;
-}
-.rdp-day_disabled {
-  text-decoration: line-through;
-  pointer-events: none;
-}
+/* react-day-picker styles fully overridden by custom .rdp-root rules (no package css import) */
 
-/* React Day Picker (calendar) — themed to match Postflow (minimal, mobile-friendly, uses design tokens) */
+/* React Day Picker (calendar) — much nicer modern look for Postflow */
 .rdp-root {
-  /* Map to theme tokens */
   --rdp-accent-color: var(--primary);
   --rdp-accent-background-color: var(--accent);
   --rdp-today-color: var(--primary);
-  --rdp-day-height: 38px;
-  --rdp-day-width: 38px;
-  --rdp-day_button-height: 36px;
-  --rdp-day_button-width: 36px;
-  --rdp-nav_button-height: 2rem;
-  --rdp-nav_button-width: 2rem;
   font-size: 0.875rem;
-  --rdp-outside-opacity: 0.45;
+  --rdp-outside-opacity: 0.5;
 }
 
 .rdp-root .rdp-day_button {
   border-radius: 9999px;
   font-weight: 500;
-  transition: background-color 120ms ease, color 120ms ease;
+  transition: transform 80ms ease, background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+  position: relative;
 }
 
 .rdp-root .rdp-day_button:hover:not(:disabled) {
   background-color: var(--accent);
   color: var(--accent-foreground);
+  transform: scale(1.02);
 }
 
 .rdp-root .rdp-day_button:focus-visible {
   outline: 2px solid var(--ring);
-  outline-offset: 1px;
+  outline-offset: 2px;
 }
 
 .rdp-root .rdp-day_button[aria-selected="true"] {
   background-color: var(--primary);
   color: var(--primary-foreground);
-  border-color: transparent;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  font-weight: 600;
 }
 
-.rdp-root .rdp-weekday {
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--muted-foreground);
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
+/* Nicer today */
+.rdp-root .rdp-day_today .rdp-day_button:not([aria-selected="true"]) {
+  border: 1.5px solid var(--primary);
+  font-weight: 600;
 }
 
-/* Scheduled day indicator (dot under number) via custom modifier class */
+/* Scheduled day indicator (clean dot or underline) */
 .rdp-day_scheduled .rdp-day_button {
-  position: relative;
   font-weight: 600;
 }
 
 .rdp-day_scheduled .rdp-day_button::after {
   content: "";
   position: absolute;
-  bottom: 2px;
+  bottom: 3px;
   left: 50%;
   transform: translateX(-50%);
   width: 5px;
   height: 5px;
   border-radius: 9999px;
   background-color: var(--primary);
+  opacity: 0.9;
   pointer-events: none;
 }
 
-/* Dark mode tweaks for contrast on dots/selected */
 .dark .rdp-day_scheduled .rdp-day_button::after {
   background-color: var(--primary);
+  opacity: 0.85;
+}
+
+/* When selected day also has scheduled, keep visible */
+.rdp-day_scheduled .rdp-day_button[aria-selected="true"]::after {
+  background-color: var(--primary-foreground);
+  opacity: 0.95;
 }
 
 .rdp-root .rdp-caption_label {
@@ -356,10 +251,26 @@
 
 .rdp-root .rdp-button_next,
 .rdp-root .rdp-button_previous {
-  border-radius: 6px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
 }
 
 .rdp-root .rdp-button_next:hover,
 .rdp-root .rdp-button_previous:hover {
   background-color: var(--accent);
+  color: var(--accent-foreground);
+}
+
+/* Schedule drawer specific: slightly larger, softer calendar */
+.rdp-root.rdp-schedule .rdp-day_button {
+  border-radius: 10px;
+  font-weight: 500;
+}
+.rdp-root.rdp-schedule .rdp-day_button[aria-selected="true"] {
+  border-radius: 10px;
+  background-color: var(--primary);
+}
+.rdp-root.rdp-schedule .rdp-weekday {
+  color: var(--muted-foreground);
+  font-weight: 500;
 }

@@ -17,6 +17,8 @@ export async function GET() {
           id: true,
           wasabiKey: true,
           wasabiUrl: true,
+          thumbnailKey: true,
+          thumbnailUrl: true,
           duration: true,
           viralityScore: true,
           hookText: true,
@@ -36,6 +38,9 @@ export async function GET() {
             wasabiUrl: s.clip.wasabiKey
               ? await getWasabiPresignedUrl(s.clip.wasabiKey)
               : s.clip.wasabiUrl,
+            thumbnailUrl: s.clip.thumbnailKey
+              ? await getWasabiPresignedUrl(s.clip.thumbnailKey)
+              : s.clip.thumbnailUrl,
           }
         : s.clip,
     }))
@@ -75,7 +80,10 @@ export async function POST(req: NextRequest) {
       clip: {
         select: {
           id: true,
+          wasabiKey: true,
           wasabiUrl: true,
+          thumbnailKey: true,
+          thumbnailUrl: true,
           duration: true,
           viralityScore: true,
           hookText: true,

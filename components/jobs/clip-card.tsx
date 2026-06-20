@@ -12,6 +12,7 @@ interface Clip {
   id: string
   wasabiUrl: string
   wasabiKey?: string | null
+  thumbnailUrl?: string | null
   duration: number
   viralityScore: number
   hookText: string
@@ -168,6 +169,7 @@ export function ClipCard({ clip, onApprove, onSchedule, playingClipId, onPlay, s
               controls
               playsInline
               crossOrigin="anonymous"
+              poster={clip.thumbnailUrl || undefined}
               className="h-full w-full object-contain focus:outline-none"
               onEnded={() => setPlaying(false)}
               onError={() => setVideoError(true)}
@@ -182,9 +184,19 @@ export function ClipCard({ clip, onApprove, onSchedule, playingClipId, onPlay, s
             onClick={startPlaying}
             aria-label={`Play clip ${clip.hookText ? `"${clip.hookText}"` : ""}`}
           >
-            {/* Poster fallback: subtle gradient + pattern for minimalist video frame feel (no real poster data yet) */}
-            <div className="absolute inset-0 bg-gradient-to-br from-zinc-950 via-black to-zinc-900" />
-            <div className="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.06)_0.6px,transparent_1px)] bg-[length:4px_4px]" />
+            {/* Real thumbnail or fallback poster */}
+            {clip.thumbnailUrl ? (
+              <img
+                src={clip.thumbnailUrl}
+                alt={clip.hookText || "clip thumbnail"}
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+            ) : (
+              <>
+                <div className="absolute inset-0 bg-gradient-to-br from-zinc-950 via-black to-zinc-900" />
+                <div className="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.06)_0.6px,transparent_1px)] bg-[length:4px_4px]" />
+              </>
+            )}
             {/* Play control — larger tap target, nice hover scale */}
             <div className="relative z-10 flex h-14 w-14 items-center justify-center rounded-full bg-white/20 backdrop-blur-md ring-1 ring-white/30 transition-all group-hover/play:scale-105 group-hover/play:bg-white/30 group-active/play:scale-95">
               <PlayIcon className="h-6 w-6 fill-white text-white drop-shadow" />

@@ -112,6 +112,8 @@ model Clip {
 
   wasabiKey     String
   wasabiUrl     String
+  thumbnailKey  String?
+  thumbnailUrl  String?
   duration      Float
   start         Float
   end           Float

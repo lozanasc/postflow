@@ -26,6 +26,7 @@ export default async function LibraryPage() {
       ...c,
       wasabiKey: c.wasabiKey, // ensure passed to clip card for on-demand presign
       wasabiUrl: c.wasabiKey ? await getWasabiPresignedUrl(c.wasabiKey) : c.wasabiUrl,
+      thumbnailUrl: c.thumbnailKey ? await getWasabiPresignedUrl(c.thumbnailKey) : c.thumbnailUrl,
     }))
   )
 

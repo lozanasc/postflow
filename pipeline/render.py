@@ -131,16 +131,41 @@ def render_clip(
             _burn_watermark(current_path, wm_path, wm_text, wm_position)
             current_path = wm_path
 
-        # ── 6. Upload ─────────────────────────────────────────────────────────
+        # ── 6. Upload video ───────────────────────────────────────────────────
         output_key = f"jobs/{job_id}/clips/clip_{clip_index:03d}.mp4"
         s3.upload_file(current_path, bucket, output_key, ExtraArgs={"ContentType": "video/mp4"})
 
+        # ── 7. Generate thumbnail from final video ────────────────────────────
+        import subprocess
+        thumbnail_path = os.path.join(tmpdir, f"thumb_{clip_index:03d}.jpg")
+        # Pick a nice frame ~1s in or 10% of duration
+        thumb_time = min(1.0, (clip["end"] - clip["start"]) * 0.1)
+        subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-ss", str(thumb_time),
+                "-i", current_path,
+                "-vframes", "1",
+                "-vf", f"scale={target_w}:-1:force_original_aspect_ratio=decrease",
+                "-q:v", "2",
+                thumbnail_path,
+            ],
+            check=True,
+            capture_output=True,
+        )
+
+        thumb_key = f"jobs/{job_id}/clips/clip_{clip_index:03d}_thumb.jpg"
+        s3.upload_file(thumbnail_path, bucket, thumb_key, ExtraArgs={"ContentType": "image/jpeg"})
+
         # Use stable public URL (bucket must have public-read policy for GetObject)
         url = f"https://s3.wasabisys.com/{bucket}/{output_key}"
+        thumb_url = f"https://s3.wasabisys.com/{bucket}/{thumb_key}"
 
     return {
         "output_key": output_key,
         "wasabi_url": url,
+        "thumbnail_key": thumb_key,
+        "thumbnail_url": thumb_url,
         "duration": clip["end"] - clip["start"],
         "hook_text": clip.get("hook_text", ""),
         "virality_score": clip.get("virality_score", 0),

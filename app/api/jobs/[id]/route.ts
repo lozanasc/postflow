@@ -65,6 +65,8 @@ export async function GET(
                   jobId: id,
                   wasabiKey: c.output_key,
                   wasabiUrl: c.wasabi_url,
+                  thumbnailKey: c.thumbnail_key ?? null,
+                  thumbnailUrl: c.thumbnail_url ?? null,
                   duration: c.duration,
                   start: c.start,
                   end: c.end,
@@ -99,6 +101,9 @@ export async function GET(
       wasabiUrl: clip.wasabiKey
         ? await getWasabiPresignedUrl(clip.wasabiKey)
         : clip.wasabiUrl,
+      thumbnailUrl: clip.thumbnailKey
+        ? await getWasabiPresignedUrl(clip.thumbnailKey)
+        : clip.thumbnailUrl,
     }))
   )
 
@@ -169,6 +174,8 @@ export async function POST(
       data: body.clips.map((c: {
         output_key: string
         wasabi_url: string
+        thumbnail_key?: string
+        thumbnail_url?: string
         duration: number
         start: number
         end: number
@@ -179,6 +186,8 @@ export async function POST(
         jobId: id,
         wasabiKey: c.output_key,
         wasabiUrl: c.wasabi_url,
+        thumbnailKey: c.thumbnail_key ?? null,
+        thumbnailUrl: c.thumbnail_url ?? null,
         duration: c.duration,
         start: c.start,
         end: c.end,
